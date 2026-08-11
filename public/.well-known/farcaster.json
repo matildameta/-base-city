@@ -1,0 +1,21 @@
+{
+  "accountAssociation": {
+    "header": "PUT_HEADER_FROM_WARPCAST_MANIFEST_TOOL",
+    "payload": "PUT_PAYLOAD_FROM_WARPCAST_MANIFEST_TOOL",
+    "signature": "PUT_SIGNATURE_FROM_WARPCAST_MANIFEST_TOOL"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Base City",
+    "iconUrl": "https://your-app.vercel.app/icon.png",
+    "homeUrl": "https://your-app.vercel.app",
+    "imageUrl": "https://your-app.vercel.app/og.png",
+    "splashImageUrl": "https://your-app.vercel.app/splash.png",
+    "splashBackgroundColor": "#0b0f1a",
+    "webhookUrl": "https://your-app.vercel.app/api/webhook",
+    "subtitle": "شهر زنده‌ی Base",
+    "description": "هر آدرس Base یک ساختمان. هرچه فعالیت on-chain بیشتر، ساختمان بزرگ‌تر.",
+    "primaryCategory": "social",
+    "tags": ["base", "onchain", "city", "visualization"]
+  }
+}
