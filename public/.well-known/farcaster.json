@@ -17,7 +17,7 @@
     "splashBackgroundColor": "#0b0f1a",
     "webhookUrl": "https://basecity.vercel.app/api/webhook",
     "subtitle": "The living city of Base",
-    "description": "Every Base address becomes a building. The more on-chain activity, the taller it grows. Scan any wallet, find who owns it via Farcaster or Basename, and mint your own plot.",
+    "description": "Every Base address becomes a building — the more on-chain activity, the taller it grows. Scan any wallet, see who owns it, and mint your plot.",
     "primaryCategory": "social",
     "tags": ["base", "onchain", "city", "visualization"]
   }

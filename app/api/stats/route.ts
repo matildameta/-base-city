@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getWalletStats } from "@/lib/walletStats";
 
 export const dynamic = "force-dynamic";
+// Several serialized explorer calls; give the function room on Vercel.
+export const maxDuration = 60;
 
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
