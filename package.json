@@ -1,0 +1,41 @@
+{
+  "name": "base-city",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@farcaster/miniapp-sdk": "^0.3.0",
+    "@formkit/auto-animate": "^0.10.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-query": "^5.101.4",
+    "@use-gesture/react": "^10.3.1",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.31.0",
+    "motion": "^13.1.0",
+    "next": "14.2.35",
+    "pixi.js": "^8.19.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "viem": "^2.55.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^20.14.15",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.35",
+    "prettier": "^3.9.6",
+    "typescript": "^5.5.4"
+  }
+}

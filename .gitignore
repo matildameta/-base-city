@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+
+# build + local
+tsconfig.tsbuildinfo
+base-city.zip
+.DS_Store
