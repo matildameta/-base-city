@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swa
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-display", display: "swap" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-face", display: "swap" });
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://your-app.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://basecity.vercel.app";
 
 const miniAppEmbed = {
   version: "1",

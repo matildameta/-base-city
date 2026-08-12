@@ -131,10 +131,40 @@ export default function Page() {
     return () => clearInterval(iv);
   }, [loadCity]);
 
+  // Detect whether we're running inside a Farcaster / Base mini app. When we are,
+  // tag <body> so the CSS can switch to a compact, non-overlapping layout, and
+  // apply the host's safe-area insets so nothing hides under the mini-app header.
   useEffect(() => {
+    let cancelled = false;
     import("@farcaster/miniapp-sdk")
-      .then(({ sdk }) => sdk.actions.ready().catch(() => {}))
+      .then(async ({ sdk }) => {
+        try {
+          const inMini = await sdk.isInMiniApp();
+          if (!cancelled && inMini) {
+            document.body.classList.add("mini");
+            try {
+              const ctx: any = await sdk.context;
+              const insets = ctx?.client?.safeAreaInsets;
+              if (insets) {
+                const r = document.documentElement.style;
+                r.setProperty("--sai-top", `${insets.top ?? 0}px`);
+                r.setProperty("--sai-bottom", `${insets.bottom ?? 0}px`);
+                r.setProperty("--sai-left", `${insets.left ?? 0}px`);
+                r.setProperty("--sai-right", `${insets.right ?? 0}px`);
+              }
+            } catch {
+              /* insets are optional */
+            }
+          }
+        } catch {
+          /* not in a mini app host */
+        }
+        await sdk.actions.ready().catch(() => {});
+      })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -326,17 +356,19 @@ export default function Page() {
         </div>
         <div className="top-actions">
           <button className="ghost" onClick={() => setShowInfo(true)}>
-            ℹ️ What is this?
+            ℹ️<span className="lbl"> What is this?</span>
           </button>
           <button className="ghost" onClick={() => setShowLeaderboard((v) => !v)}>
-            🏆 Leaderboard
+            🏆<span className="lbl"> Leaderboard</span>
           </button>
           {account ? (
             <button className="ghost" onClick={disconnectWallet} title="Disconnect wallet">
-              🟢 {short(account)} · Disconnect
+              🟢<span className="lbl"> {short(account)} · Disconnect</span>
             </button>
           ) : (
-            <button onClick={connectWallet}>Connect Wallet</button>
+            <button onClick={connectWallet}>
+              👛<span className="lbl"> Connect Wallet</span>
+            </button>
           )}
         </div>
       </div>

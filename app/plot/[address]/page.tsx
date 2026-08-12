@@ -6,7 +6,7 @@ import { resolveFarcaster } from "@/lib/neynar";
 
 export const dynamic = "force-dynamic";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://your-app.vercel.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://basecity.vercel.app";
 const ADDR = /^0x[a-fA-F0-9]{40}$/;
 
 function short(a: string) {
