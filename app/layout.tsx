@@ -10,7 +10,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://basecity.vercel.app"
 
 const miniAppEmbed = {
   version: "1",
-  imageUrl: `${APP_URL}/og.png`,
+  imageUrl: `${APP_URL}/embed.png`,
   button: {
     title: "🏙️ Open Base City",
     action: {
