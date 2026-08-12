@@ -86,6 +86,13 @@ export default function Page() {
   const [fcMap, setFcMap] = useState<Record<string, FarcasterProfile | null>>({});
   const fcFetched = useRef<Set<string>>(new Set());
 
+  // Inside a mini app the frame is short and narrow, so the search dock and the
+  // creator credit are collapsed by default and slide open on demand instead of
+  // permanently covering the city. On the open web both stay expanded.
+  const [isMini, setIsMini] = useState(false);
+  const [dockOpen, setDockOpen] = useState(false);
+  const [creditOpen, setCreditOpen] = useState(false);
+
   // scan + reveal flow
   const [scanning, setScanning] = useState(false);
   const [scanStep, setScanStep] = useState(0);
@@ -143,6 +150,7 @@ export default function Page() {
           const inMini = await sdk.isInMiniApp();
           if (!cancelled && inMini) {
             document.body.classList.add("mini");
+            setIsMini(true);
             try {
               const ctx: any = await sdk.context;
               const insets = ctx?.client?.safeAreaInsets;
@@ -173,6 +181,13 @@ export default function Page() {
     const t = setTimeout(() => setToast(""), 5000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  // in a mini app the expanded credit tucks itself away again on its own
+  useEffect(() => {
+    if (!isMini || !creditOpen) return;
+    const t = setTimeout(() => setCreditOpen(false), 6000);
+    return () => clearTimeout(t);
+  }, [isMini, creditOpen]);
 
   // resolve Farcaster identities for city members (for the leaderboard + rows)
   useEffect(() => {
@@ -394,18 +409,33 @@ export default function Page() {
       </div>
 
       {/* ---- creator credit ---- */}
-      <a
-        className="credit"
-        href="https://x.com/sadeghss2"
-        target="_blank"
-        rel="noreferrer"
-        title="Built by openmeta — @sadeghss2 on X"
-      >
-        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden fill="currentColor">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-        </svg>
-        <span>Built by <b>openmeta</b></span>
-      </a>
+      {/* In a mini app this is a bare icon that only expands to the full credit
+          when tapped, and it steps aside entirely whenever a panel is up. */}
+      {isMini && (dockOpen || selected || reveal || scanning) ? null : isMini && !creditOpen ? (
+        <button
+          className="credit credit-toggle"
+          onClick={() => setCreditOpen(true)}
+          aria-label="Show creator credit"
+          title="Built by openmeta"
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+          </svg>
+        </button>
+      ) : (
+        <a
+          className="credit"
+          href="https://x.com/sadeghss2"
+          target="_blank"
+          rel="noreferrer"
+          title="Built by openmeta — @sadeghss2 on X"
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+          </svg>
+          <span>Built by <b>openmeta</b></span>
+        </a>
+      )}
 
       {/* ---- info modal ---- */}
       <AnimatePresence>
@@ -455,22 +485,15 @@ export default function Page() {
         )}
       </AnimatePresence>
 
-      <div className="legend">
-        <div className="legend-title">5 districts · 52 building types</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#6b7280" }} />🪦 Outskirts — dead / dust wallets <span className="legend-ex">🕳️🗑️🚮🪑🛣️🥀🧱🚗⛺</span></div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#5b82c4" }} />🏡 Residential — holders <span className="legend-ex">🏚️🏠🏡🏘️🛖🏢🏙️🏛️🏰🌆</span></div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#e08b52" }} />🏪 Market Street — traders <span className="legend-ex">🛒🎪☕👗🏪🛍️🕹️🏨🏬📈</span></div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#9b7bff" }} />🏛️ Downtown — whales &amp; DAOs <span className="legend-ex">🏢⚖️🏛️🏳️🗼💹🏦🌃🔭</span></div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#7a8590" }} />🏭 Industrial — contracts <span className="legend-ex">🔧📦🏭⚓⛽⚡☀️🖥️</span></div>
-        <div className="legend-foot">Your wallet becomes 1 of 52 unique buildings — decided by balance, activity &amp; contract code.</div>
-      </div>
-
-      <div className="zoom-controls">
-        <button className="small" onClick={() => cameraRef.current?.zoomIn()}>＋</button>
-        <button className="small" onClick={() => cameraRef.current?.zoomOut()}>－</button>
-        <button className="small" onClick={() => cameraRef.current?.reset()}>⟳</button>
-      </div>
-
+      {/* zoom column — hidden in a mini app while a card is up, the frame is
+          too narrow for both */}
+      {!(isMini && (selected || reveal || scanning)) && (
+        <div className="zoom-controls">
+          <button className="small" onClick={() => cameraRef.current?.zoomIn()}>＋</button>
+          <button className="small" onClick={() => cameraRef.current?.zoomOut()}>－</button>
+          <button className="small" onClick={() => cameraRef.current?.reset()}>⟳</button>
+        </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
       {/* ---- scanning overlay ---- */}
       <AnimatePresence>
@@ -581,11 +604,15 @@ export default function Page() {
           animate={{ opacity: 1, y: 0 }}
           style={{
             position: "fixed",
-            left: "50%",
-            bottom: 96,
-            transform: "translateX(-50%)",
+            // centred with auto margins, not translateX — motion animates
+            // `transform` for the slide-in and would overwrite it
+            left: 0,
+            right: 0,
+            marginInline: "auto",
+            bottom: isMini ? 12 : 96,
             width: "min(360px, 92vw)",
-            maxHeight: "calc(100vh - 116px)",
+            maxHeight: `calc(100vh - ${isMini ? 24 : 116}px)`,
+            zIndex: 30,
             ["--reveal-accent" as any]: ITEM_META[selected.itemType as ItemType].accent,
           }}
         >
@@ -650,30 +677,57 @@ export default function Page() {
 
           <div className="reveal-actions">
             <button onClick={() => shareToWarpcast(selected)}>🟣 Share on Warpcast</button>
-            <a href={`https://basescan.org/address/${selected.address}`} target="_blank" rel="noreferrer">
-              <button className="ghost" style={{ width: "100%", justifyContent: "center" }}>🔎 View on Basescan</button>
-            </a>
             <button className="ghost" onClick={() => setSelected(null)}>Close</button>
           </div>
         </motion.div>
       )}
 
       {/* ---- search dock ---- */}
+      {/* Collapsed to a single pill inside a mini app so the city stays visible;
+          tapping it slides the full dock up. Always expanded on the open web. */}
       {!reveal && !selected && !scanning && (
-        <div className="search-bar">
-          <div className="search-row">
-            <input
-              type="text"
-              placeholder="Enter a Base wallet address (0x...)"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runScan(input.trim())}
-            />
-            <button onClick={() => runScan(input.trim())}>Scan 🔍</button>
-          </div>
-          {error && <div className="error-row">{error}</div>}
-          {!error && <div className="hint-row">Scroll to zoom · drag to pan · the city updates for everyone in real time</div>}
-        </div>
+        <AnimatePresence initial={false} mode="wait">
+          {isMini && !dockOpen ? (
+            <motion.button
+              key="fab"
+              className="dock-fab"
+              onClick={() => setDockOpen(true)}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              transition={{ duration: 0.18 }}
+            >
+              🔍 Scan a wallet
+            </motion.button>
+          ) : (
+            <motion.div
+              key="dock"
+              className="search-bar"
+              initial={isMini ? { opacity: 0, y: 40 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ type: "spring", stiffness: 320, damping: 30 }}
+            >
+              {isMini && (
+                <button className="dock-collapse" onClick={() => setDockOpen(false)} aria-label="Hide search">
+                  ▾
+                </button>
+              )}
+              <div className="search-row">
+                <input
+                  type="text"
+                  placeholder="Enter a Base wallet address (0x...)"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && runScan(input.trim())}
+                />
+                <button onClick={() => runScan(input.trim())}>Scan 🔍</button>
+              </div>
+              {error && <div className="error-row">{error}</div>}
+              {!error && <div className="hint-row">Scroll to zoom · drag to pan · the city updates for everyone in real time</div>}
+            </motion.div>
+          )}
+        </AnimatePresence>
       )}
 
       {/* ---- leaderboard ---- */}

@@ -691,6 +691,81 @@ const ZONE_GROUND: Record<string, [string, string]> = {
   industrial: ["#262a2f", "#15181c"],
 };
 
+// accent per district, used by the marker signs and the horizon glow
+const ZONE_ACCENT: Record<string, string> = {
+  wasteland: "#8a8f99",
+  residential: "#6f9ade",
+  commercial: "#e6a06a",
+  downtown: "#a98dff",
+  industrial: "#8b98a6",
+};
+
+// A small illuminated district marker standing on the promenade, in place of
+// the old wall-of-text zone label: accent dot, name, and a thin light bar.
+function drawDistrictSign(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  y: number,
+  label: string,
+  accent: string,
+  fs: number
+) {
+  ctx.save();
+  ctx.font = `600 ${fs}px sans-serif`;
+  const spacing = fs * 0.16;
+  const canSpace = "letterSpacing" in ctx;
+  if (canSpace) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${spacing}px`;
+  const text = label.toUpperCase();
+  const tw = ctx.measureText(text).width;
+  const padX = fs * 1.1;
+  const w = tw + padX * 2 + fs * 1.4;
+  const h = fs * 2.1;
+  const x = cx - w / 2;
+
+  // plaque
+  ctx.fillStyle = "rgba(9, 14, 26, 0.72)";
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.strokeStyle = accent + "44";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2);
+  ctx.stroke();
+
+  // accent dot with a soft halo
+  const dotX = x + padX * 0.85;
+  const dotY = y + h / 2;
+  const halo = ctx.createRadialGradient(dotX, dotY, 0, dotX, dotY, fs * 1.1);
+  halo.addColorStop(0, accent + "88");
+  halo.addColorStop(1, accent + "00");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, fs * 1.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.arc(dotX, dotY, fs * 0.24, 0, Math.PI * 2);
+  ctx.fill();
+
+  // name
+  ctx.fillStyle = "rgba(226,235,255,0.82)";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, dotX + fs * 0.75, dotY + 0.5);
+
+  // light bar beneath the plaque
+  const barW = w * 0.5;
+  const bar = ctx.createLinearGradient(cx - barW / 2, 0, cx + barW / 2, 0);
+  bar.addColorStop(0, accent + "00");
+  bar.addColorStop(0.5, accent + "66");
+  bar.addColorStop(1, accent + "00");
+  ctx.fillStyle = bar;
+  ctx.fillRect(cx - barW / 2, y + h + fs * 0.45, barW, 1.5);
+
+  if (canSpace) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = "0px";
+  ctx.textBaseline = "alphabetic";
+  ctx.restore();
+}
+
 interface Star { x: number; y: number; r: number; tw: number }
 interface Cloud { x: number; y: number; s: number; v: number }
 
@@ -870,19 +945,25 @@ function drawClouds(ctx: CanvasRenderingContext2D, clouds: Cloud[], w: number, d
   ctx.restore();
 }
 
-// distant parallax skyline silhouettes with atmospheric haze
-function drawSkyline(ctx: CanvasRenderingContext2D, w: number, h: number, camX: number, zoom: number) {
+// distant parallax skyline silhouettes with atmospheric haze.
+// Layer bases are anchored to the horizon so the silhouettes still sit just
+// behind the city when the horizon moves up on tall/narrow (mini app) frames.
+function drawSkyline(ctx: CanvasRenderingContext2D, w: number, h: number, camX: number, zoom: number, groundY: number) {
+  // On a short frame the backdrop has to shrink too, otherwise the distant
+  // silhouettes tower over the actual city standing on the horizon.
+  const s = Math.max(0.45, Math.min(1, h / 900));
+  const lift = (f: number) => Math.min(h * f, 900 * f);
   const layers = [
-    { color: "#0c1428", speed: 0.15, base: h * 0.58, hMax: 90, step: 46 },
-    { color: "#111c38", speed: 0.3, base: h * 0.64, hMax: 130, step: 62 },
-    { color: "#16244a", speed: 0.5, base: h * 0.7, hMax: 180, step: 80 },
+    { color: "#0c1428", speed: 0.15, base: groundY - lift(0.24), hMax: 90 * s, step: 46 * s },
+    { color: "#111c38", speed: 0.3, base: groundY - lift(0.18), hMax: 130 * s, step: 62 * s },
+    { color: "#16244a", speed: 0.5, base: groundY - lift(0.12), hMax: 180 * s, step: 80 * s },
   ];
   for (const L of layers) {
     ctx.fillStyle = L.color;
     const off = -(camX * L.speed * zoom) % L.step;
     for (let x = off - L.step; x < w + L.step; x += L.step) {
       const seed = Math.abs(Math.floor((x - off) / L.step) * 2654435761) % 1000;
-      const bh = 40 + (seed % L.hMax);
+      const bh = 40 * s + (seed % L.hMax);
       const bw = L.step * (0.6 + (seed % 30) / 100);
       ctx.fillRect(x, L.base - bh, bw, bh + 40);
       // sparse lit windows in far towers
@@ -969,7 +1050,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         zoomIn: () => (cam.current.targetZoom = Math.min(MAX_ZOOM, cam.current.targetZoom * 1.25)),
         zoomOut: () => (cam.current.targetZoom = Math.max(MIN_ZOOM, cam.current.targetZoom / 1.25)),
         reset: () => {
-          cam.current.targetZoom = 0.9;
+          cam.current.targetZoom = defaultZoom();
           cam.current.targetX = 0;
         },
         focusOn: (wx: number) => {
@@ -991,7 +1072,31 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       };
     }
 
-    const groundScreen = () => window.innerHeight * 0.82;
+    // Where the horizon sits, as a fraction of viewport height. A wide desktop
+    // window can afford a lot of sky; a tall, narrow mini-app frame cannot —
+    // there the horizon moves up so the ground and the buildings standing on it
+    // get most of the frame instead of the sky.
+    const groundRatio = () => {
+      const W = window.innerWidth, H = window.innerHeight;
+      if (H > W * 1.45) return 0.62; // tall portrait — Farcaster mini frame
+      if (H > W * 1.1) return 0.68;  // portrait phone
+      if (H > W) return 0.74;
+      return 0.82;                   // landscape / desktop — unchanged
+    };
+    const groundScreen = () => window.innerHeight * groundRatio();
+
+    // Buildings are drawn at a fixed world scale, so a narrow frame needs a
+    // closer camera for them to read at all.
+    const defaultZoom = () => {
+      const W = window.innerWidth, H = window.innerHeight;
+      // A narrow frame needs to pull *back*, not in: buildings are up to ~200
+      // world units wide, so anything near 1× shows barely two of them and the
+      // city stops reading as a city.
+      if (H > W * 1.45) return 0.7;
+      if (H > W) return 0.78;
+      return 0.9;
+    };
+    cam.current.zoom = cam.current.targetZoom = defaultZoom();
     const worldXToScreen = (wx: number) => (wx - cam.current.x) * cam.current.zoom;
     const screenToWorldX = (sx: number) => sx / cam.current.zoom + cam.current.x;
 
@@ -1041,7 +1146,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     // ---- render loop ----
-    function frame(now: number) {
+    function renderFrame(now: number) {
       const dt = Math.min(48, now - last);
       last = now;
       const t = now - start;
@@ -1056,16 +1161,28 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       const day = dayFactorNow();
       const weather = weatherNow();
 
+      const gY = groundScreen();
+
       // background (screen space)
       drawSky(ctx, W, H, t, day);
       drawStars(ctx, stars.current, t, day);
       drawClouds(ctx, clouds.current, W, dt);
-      drawSkyline(ctx, W, H, cam.current.x, cam.current.zoom);
+      drawSkyline(ctx, W, H, cam.current.x, cam.current.zoom, gY);
 
       const layout = computeCityLayout(buildingsRef.current);
       cam.current.worldWidth = layout.worldWidth;
-      const gY = groundScreen();
       const zoom = cam.current.zoom;
+
+      // base ground across the whole frame — the zone strips only cover the
+      // claimed part of the world, and with a high horizon the gaps would
+      // otherwise show sky below the horizon line
+      {
+        const g = ctx.createLinearGradient(0, gY, 0, H);
+        g.addColorStop(0, "#141c2e");
+        g.addColorStop(1, "#080c16");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, gY, W, H - gY);
+      }
 
       // ground strips per zone
       for (const zr of layout.zoneRanges) {
@@ -1078,12 +1195,23 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         g.addColorStop(1, c1);
         ctx.fillStyle = g;
         ctx.fillRect(sx, gY, ex - sx, H - gY);
-        // zone label
-        ctx.fillStyle = "rgba(180,205,255,0.16)";
-        ctx.font = `700 ${Math.round(22 * Math.min(1.4, zoom))}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.fillText(zr.label.toUpperCase(), (sx + ex) / 2, gY + 34);
-        ctx.textAlign = "left";
+
+        // Districts now read by colour instead of a wall of text: a soft accent
+        // wash hugging the horizon, plus a thin divider at the boundary.
+        const accent = ZONE_ACCENT[zr.zone] || "#7f9ad0";
+        const glowH = Math.max(18, (H - gY) * 0.16);
+        const glow = ctx.createLinearGradient(0, gY, 0, gY + glowH);
+        glow.addColorStop(0, accent + "2e");
+        glow.addColorStop(1, accent + "00");
+        ctx.fillStyle = glow;
+        ctx.fillRect(sx, gY, ex - sx, glowH);
+        if (sx > 0 && sx < W) {
+          const div = ctx.createLinearGradient(0, gY, 0, gY + (H - gY) * 0.3);
+          div.addColorStop(0, accent + "55");
+          div.addColorStop(1, accent + "00");
+          ctx.fillStyle = div;
+          ctx.fillRect(sx, gY, 1, (H - gY) * 0.3);
+        }
       }
       // ground edge highlight
       ctx.strokeStyle = "rgba(120,160,230,0.18)";
@@ -1092,6 +1220,72 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       ctx.moveTo(0, gY);
       ctx.lineTo(W, gY);
       ctx.stroke();
+
+      // Promenade in front of the buildings. The horizon sits high on tall
+      // frames, so the ground would otherwise be a large flat wash — a kerb, a
+      // dashed centre line that scrolls with the camera, and a bottom vignette
+      // give it depth.
+      {
+        const groundH = H - gY;
+        const kerbY = gY + groundH * 0.2;
+        ctx.fillStyle = "rgba(10, 16, 32, 0.28)";
+        ctx.fillRect(0, kerbY, W, groundH);
+        ctx.strokeStyle = "rgba(150,185,255,0.12)";
+        ctx.beginPath();
+        ctx.moveTo(0, kerbY);
+        ctx.lineTo(W, kerbY);
+        ctx.stroke();
+
+        const laneY = gY + groundH * 0.44;
+        const dash = 58 * zoom;
+        const off = -((cam.current.x * zoom) % (dash * 2));
+        ctx.strokeStyle = "rgba(190,215,255,0.13)";
+        ctx.lineWidth = Math.max(2, 3 * zoom);
+        ctx.beginPath();
+        for (let x = off - dash * 2; x < W + dash * 2; x += dash * 2) {
+          ctx.moveTo(x, laneY);
+          ctx.lineTo(x + dash, laneY);
+        }
+        ctx.stroke();
+        ctx.lineWidth = 1;
+
+        const vig = ctx.createLinearGradient(0, H - groundH * 0.45, 0, H);
+        vig.addColorStop(0, "rgba(4,6,14,0)");
+        vig.addColorStop(1, "rgba(4,6,14,0.6)");
+        ctx.fillStyle = vig;
+        ctx.fillRect(0, H - groundH * 0.45, W, groundH * 0.45);
+      }
+
+      // District markers — one small illuminated plaque per visible district,
+      // sitting on the promenade. Only the district nearest the centre of the
+      // frame is shown at full strength, so the foreground never gets crowded.
+      {
+        const groundH = H - gY;
+        const fs = Math.round(Math.max(9, Math.min(13, W / 34)));
+        const signY = gY + groundH * 0.24;
+        let nearest: { d: number; zr: (typeof layout.zoneRanges)[number]; cx: number } | null = null;
+        for (const zr of layout.zoneRanges) {
+          const sx = worldXToScreen(zr.start);
+          const ex = worldXToScreen(zr.end);
+          if (ex < 0 || sx > W) continue;
+          // centre of the district's *visible* part, so a wide district still
+          // labels itself while you pan through it
+          const cx = (Math.max(sx, 0) + Math.min(ex, W)) / 2;
+          if (!Number.isFinite(cx)) continue;
+          const d = Math.abs(cx - W / 2);
+          if (!nearest || d < nearest.d) nearest = { d, zr, cx };
+        }
+        if (nearest) {
+          drawDistrictSign(
+            ctx,
+            nearest.cx,
+            signY,
+            nearest.zr.label,
+            ZONE_ACCENT[nearest.zr.zone] || "#7f9ad0",
+            fs
+          );
+        }
+      }
 
       // genesis landmarks
       for (const f of layout.genesis) {
@@ -1149,7 +1343,20 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
 
       // foreground weather (rain streaks / fog)
       drawWeather(ctx, W, H, weather, rain.current, dt, day);
+    }
 
+    // One bad frame must not take the whole city down: the loop always
+    // reschedules, and the first failure is reported once.
+    let frameErrorLogged = false;
+    function frame(now: number) {
+      try {
+        renderFrame(now);
+      } catch (err) {
+        if (!frameErrorLogged) {
+          frameErrorLogged = true;
+          console.error("[CityCanvas] render frame failed", err);
+        }
+      }
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
