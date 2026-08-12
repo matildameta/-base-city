@@ -79,6 +79,9 @@ on Vercel serverless cold starts):
 Optional:
    - `NEYNAR_API_KEY` — enables Farcaster names + avatars on the leaderboard and info cards
      (get a free key at https://neynar.com). Without it, owners fall back to Basename / address.
+   - `ETHERSCAN_API_KEY` — powers the full 30-metric wallet analytics panel (wallet age, gas spent,
+     streaks, token diversity, on-chain score, and more). One free Etherscan V2 key covers Base —
+     get it at https://etherscan.io/myapikey. Without it the panel is simply hidden.
    - `BASE_RPC_URL` — your own Base RPC (Alchemy/Infura/etc.) for higher rate limits than the free
      public one.
    - `MAINNET_RPC_URL` — a mainnet RPC used only for Basename lookups (ENSIP-19 resolution starts

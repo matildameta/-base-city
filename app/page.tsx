@@ -5,6 +5,7 @@ import { encodeFunctionData } from "viem";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import CityCanvas, { CameraControls } from "@/components/CityCanvas";
+import WalletStatsPanel from "@/components/WalletStatsPanel";
 import type { CityBuilding, ItemType, Rarity } from "@/lib/classify";
 import { ITEM_META, RARITY_META, rarityOf } from "@/lib/classify";
 import type { FarcasterProfile } from "@/lib/neynar";
@@ -321,6 +322,16 @@ export default function Page() {
   const contracts = buildings.filter((b) => b.isContract).length;
   const onFarcaster = buildings.filter((b) => fcMap[b.address.toLowerCase()]).length;
 
+  // full ranking of every resident (same weighting as the leaderboard) so a
+  // building's "Base City Rank" can be shown in its stats panel.
+  const rankedAll = [...buildings].sort(
+    (a, b) => b.balanceEth * 10 + b.txCount - (a.balanceEth * 10 + a.txCount)
+  );
+  function rankOf(addr: string): number | null {
+    const i = rankedAll.findIndex((b) => b.address.toLowerCase() === addr.toLowerCase());
+    return i >= 0 ? i + 1 : null;
+  }
+
   // owner label used across rows/cards: Farcaster > Basename > short address
   function ownerName(b: Enriched): string {
     const fc = b.farcaster ?? fcMap[b.address.toLowerCase()];
@@ -545,6 +556,7 @@ export default function Page() {
                   <div className="stat-label">Transactions</div>
                 </div>
               </div>
+              <WalletStatsPanel address={reveal.address} rank={rankOf(reveal.address)} total={citizens} />
               <div className="reveal-actions">
                 {reveal.alreadyMinted ? (
                   <div className="reveal-note">✅ This address already has a permanent spot in the city.</div>
@@ -573,6 +585,7 @@ export default function Page() {
             bottom: 96,
             transform: "translateX(-50%)",
             width: "min(360px, 92vw)",
+            maxHeight: "calc(100vh - 116px)",
             ["--reveal-accent" as any]: ITEM_META[selected.itemType as ItemType].accent,
           }}
         >
@@ -632,6 +645,8 @@ export default function Page() {
               <span className="mini-chip">fid {(selected.farcaster ?? fcMap[selected.address.toLowerCase()])!.fid}</span>
             )}
           </div>
+
+          <WalletStatsPanel address={selected.address} rank={rankOf(selected.address)} total={citizens} />
 
           <div className="reveal-actions">
             <button onClick={() => shareToWarpcast(selected)}>🟣 Share on Warpcast</button>
