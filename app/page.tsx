@@ -80,6 +80,7 @@ export default function Page() {
   const [account, setAccount] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [selected, setSelected] = useState<Enriched | null>(null);
   const [fcMap, setFcMap] = useState<Record<string, FarcasterProfile | null>>({});
   const fcFetched = useRef<Set<string>>(new Set());
@@ -324,6 +325,9 @@ export default function Page() {
           </div>
         </div>
         <div className="top-actions">
+          <button className="ghost" onClick={() => setShowInfo(true)}>
+            ℹ️ What is this?
+          </button>
           <button className="ghost" onClick={() => setShowLeaderboard((v) => !v)}>
             🏆 Leaderboard
           </button>
@@ -345,6 +349,68 @@ export default function Page() {
         <div className="cstat"><b>{contracts}</b><span>contracts</span></div>
         <div className="cstat"><b>{onFarcaster}</b><span>on Farcaster</span></div>
       </div>
+
+      {/* ---- creator credit ---- */}
+      <a
+        className="credit"
+        href="https://x.com/sadeghss2"
+        target="_blank"
+        rel="noreferrer"
+        title="Built by openmeta — @sadeghss2 on X"
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden fill="currentColor">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+        <span>Built by <b>openmeta</b></span>
+      </a>
+
+      {/* ---- info modal ---- */}
+      <AnimatePresence>
+        {showInfo && (
+          <motion.div
+            className="modal-scrim"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowInfo(false)}
+          >
+            <motion.div
+              className="reveal-card"
+              style={{ maxWidth: 480, textAlign: "left" }}
+              initial={{ scale: 0.9, y: 16, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="reveal-emoji" style={{ fontSize: 44 }}>🏙️</div>
+              <div className="reveal-label" style={{ fontSize: 22 }}>What is Base City?</div>
+              <p className="info-p">
+                Base City turns the <b>Base blockchain</b> into a living pixel skyline. Every wallet
+                address becomes <b>one of 52 buildings</b> — from ruins for empty wallets to
+                skyscrapers for whales — decided live from its real on-chain balance, activity and
+                whether it&apos;s a smart contract.
+              </p>
+              <p className="info-p">
+                <b>Scan any address</b> (or connect your wallet) to see what it becomes. Owners show
+                up by their <b>Farcaster</b> profile or <b>Basename</b>. Click any building to see
+                who it is, their balance in ETH &amp; USD, and share it.
+              </p>
+              <p className="info-p">
+                <b>Mint your plot</b> with a real transaction on Base and you&apos;re a permanent
+                citizen — visible to everyone, forever.
+              </p>
+              <div className="reveal-actions">
+                <button onClick={() => setShowInfo(false)}>Explore the city 🏙️</button>
+                <a href="https://x.com/sadeghss2" target="_blank" rel="noreferrer">
+                  <button className="ghost" style={{ width: "100%", justifyContent: "center" }}>
+                    Follow the creator @openmeta on X
+                  </button>
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="legend">
         <div className="legend-title">5 districts · 52 building types</div>
