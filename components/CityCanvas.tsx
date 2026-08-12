@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
-import type { CityBuilding } from "@/lib/classify";
+import type { CityBuilding, Zone } from "@/lib/classify";
 import { computeCityLayout } from "@/lib/cityLayout";
 
 /* ============================ helpers ============================ */
@@ -721,55 +721,131 @@ function makeClouds(n: number, w: number, h: number): Cloud[] {
 }
 
 // deep sky gradient + moon + aurora ribbons
-function drawSky(ctx: CanvasRenderingContext2D, w: number, h: number, t: number) {
+type Weather = "clear" | "rain" | "fog";
+interface RainDrop { x: number; y: number; len: number; v: number }
+
+// real-clock day/night: 0 = deep night, 1 = midday
+function dayFactorNow(): number {
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  // peak at 13:00, trough at 01:00
+  return Math.max(0, Math.min(1, (Math.cos(((h - 13) / 24) * Math.PI * 2) + 1) / 2));
+}
+
+// weather rotates through the real day so it "changes with real time"
+function weatherNow(): Weather {
+  const d = new Date();
+  const bucket = Math.floor((d.getHours() * 60 + d.getMinutes()) / 90); // changes ~every 90 min
+  const seq: Weather[] = ["clear", "clear", "fog", "clear", "rain", "clear", "clear", "fog", "rain", "clear"];
+  const daySalt = d.getDate() + d.getMonth() * 31;
+  return seq[(bucket + daySalt) % seq.length];
+}
+
+function mix(a: string, b: string, f: number) {
+  const pa = a.match(/\w\w/g)!.map((h) => parseInt(h, 16));
+  const pb = b.match(/\w\w/g)!.map((h) => parseInt(h, 16));
+  const c = pa.map((v, i) => Math.round(v + (pb[i] - v) * f));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+function makeRain(n: number, w: number, h: number): RainDrop[] {
+  const out: RainDrop[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push({ x: Math.random() * w, y: Math.random() * h, len: 10 + Math.random() * 14, v: 0.5 + Math.random() * 0.5 });
+  }
+  return out;
+}
+
+function drawSky(ctx: CanvasRenderingContext2D, w: number, h: number, t: number, day: number) {
+  // night → day palette blend
+  const top = mix("050914", "1d4e8a", day);
+  const mid = mix("0a1330", "3d7fc4", day);
+  const low = mix("132148", "8fc0e6", day);
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#050914");
-  g.addColorStop(0.45, "#0a1330");
-  g.addColorStop(0.8, "#132148");
-  g.addColorStop(1, "#1a2b52");
+  g.addColorStop(0, top);
+  g.addColorStop(0.5, mid);
+  g.addColorStop(1, low);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  // aurora
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  for (let i = 0; i < 3; i++) {
-    const ay = h * 0.16 + i * 26;
-    const grad = ctx.createLinearGradient(0, ay - 40, 0, ay + 40);
-    const hue = ["rgba(79,208,255,", "rgba(124,247,196,", "rgba(155,123,255,"][i];
-    grad.addColorStop(0, hue + "0)");
-    grad.addColorStop(0.5, hue + (0.05 + 0.03 * Math.sin(t / 2000 + i)) + ")");
-    grad.addColorStop(1, hue + "0)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(0, ay);
-    for (let x = 0; x <= w; x += 30) {
-      ctx.lineTo(x, ay + Math.sin(x / 220 + t / 1600 + i) * 26);
+  // aurora (fades out in daylight)
+  if (day < 0.7) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 1 - day / 0.7;
+    for (let i = 0; i < 3; i++) {
+      const ay = h * 0.16 + i * 26;
+      const grad = ctx.createLinearGradient(0, ay - 40, 0, ay + 40);
+      const hue = ["rgba(79,208,255,", "rgba(124,247,196,", "rgba(155,123,255,"][i];
+      grad.addColorStop(0, hue + "0)");
+      grad.addColorStop(0.5, hue + (0.05 + 0.03 * Math.sin(t / 2000 + i)) + ")");
+      grad.addColorStop(1, hue + "0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, ay);
+      for (let x = 0; x <= w; x += 30) ctx.lineTo(x, ay + Math.sin(x / 220 + t / 1600 + i) * 26);
+      ctx.lineTo(w, ay + 80);
+      ctx.lineTo(0, ay + 80);
+      ctx.closePath();
+      ctx.fill();
     }
-    ctx.lineTo(w, ay + 80);
-    ctx.lineTo(0, ay + 80);
-    ctx.closePath();
+    ctx.restore();
+  }
+
+  // celestial body arcs across the sky with the clock
+  const arcX = w * (0.12 + 0.7 * day);
+  const arcY = h * (0.42 - 0.26 * Math.sin(day * Math.PI));
+  if (day > 0.35) {
+    // sun
+    glow(ctx, arcX, arcY, 90, "rgba(255,225,150,0.55)", 0.7 * day);
+    ctx.fillStyle = "#fff2c8";
+    ctx.beginPath();
+    ctx.arc(arcX, arcY, 30, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // moon
+    const mx = w * 0.82, my = h * 0.2;
+    glow(ctx, mx, my, 70, "rgba(220,235,255,0.5)", 0.7 * (1 - day));
+    ctx.fillStyle = "#eef4ff";
+    ctx.beginPath();
+    ctx.arc(mx, my, 26, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(150,170,210,0.25)";
+    ctx.beginPath();
+    ctx.arc(mx - 8, my - 6, 6, 0, Math.PI * 2);
+    ctx.arc(mx + 7, my + 8, 4, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.restore();
-
-  // moon
-  const mx = w * 0.82, my = h * 0.2;
-  glow(ctx, mx, my, 70, "rgba(220,235,255,0.5)", 0.7);
-  ctx.fillStyle = "#eef4ff";
-  ctx.beginPath();
-  ctx.arc(mx, my, 26, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(150,170,210,0.25)";
-  ctx.beginPath();
-  ctx.arc(mx - 8, my - 6, 6, 0, Math.PI * 2);
-  ctx.arc(mx + 7, my + 8, 4, 0, Math.PI * 2);
-  ctx.fill();
 }
 
-function drawStars(ctx: CanvasRenderingContext2D, stars: Star[], t: number) {
+// rain streaks / fog veil drawn over everything
+function drawWeather(ctx: CanvasRenderingContext2D, w: number, h: number, weather: Weather, rain: RainDrop[], dt: number, day: number) {
+  if (weather === "rain") {
+    ctx.strokeStyle = `rgba(170,200,240,${0.28 + 0.12 * (1 - day)})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    for (const d of rain) {
+      d.y += d.v * dt * 1.6;
+      d.x += d.v * dt * 0.25;
+      if (d.y > h) { d.y = -20; d.x = Math.random() * w; }
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - 2, d.y + d.len);
+    }
+    ctx.stroke();
+  } else if (weather === "fog") {
+    const fg = ctx.createLinearGradient(0, h * 0.4, 0, h);
+    fg.addColorStop(0, "rgba(150,170,200,0)");
+    fg.addColorStop(1, `rgba(150,170,200,${0.16 + 0.06 * day})`);
+    ctx.fillStyle = fg;
+    ctx.fillRect(0, h * 0.4, w, h * 0.6);
+  }
+}
+
+
+function drawStars(ctx: CanvasRenderingContext2D, stars: Star[], t: number, day: number) {
+  if (day > 0.75) return;
+  const dim = 1 - day / 0.75;
   for (const s of stars) {
-    const a = 0.4 + 0.6 * Math.abs(Math.sin(t / 900 + s.tw));
+    const a = (0.4 + 0.6 * Math.abs(Math.sin(t / 900 + s.tw))) * dim;
     ctx.fillStyle = `rgba(220,235,255,${a})`;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
@@ -834,6 +910,8 @@ export interface CameraControls {
   zoomOut: () => void;
   reset: () => void;
   focusOn: (worldX: number) => void;
+  getState: () => { x: number; zoom: number; worldWidth: number; viewW: number };
+  snapshot: () => string | null;
 }
 
 interface Props {
@@ -841,24 +919,28 @@ interface Props {
   ghostBuilding?: (CityBuilding & { alreadyMinted?: boolean }) | null;
   onPick?: (b: CityBuilding | null) => void;
   cameraRef?: MutableRefObject<CameraControls | null>;
+  zoneFilter?: Zone | null;
 }
 
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 2.4;
 
-export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef }: Props) {
+export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef, zoneFilter }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const cam = useRef({ x: 0, zoom: 0.9, targetX: 0, targetZoom: 0.9 });
+  const cam = useRef({ x: 0, zoom: 0.9, targetX: 0, targetZoom: 0.9, worldWidth: 0 });
   const stars = useRef<Star[]>([]);
   const clouds = useRef<Cloud[]>([]);
+  const rain = useRef<RainDrop[]>([]);
   const spawnAt = useRef<Map<string, number>>(new Map());
   const drag = useRef({ active: false, moved: false, lastX: 0 });
   const buildingsRef = useRef(buildings);
   const ghostRef = useRef(ghostBuilding);
   const onPickRef = useRef(onPick);
+  const filterRef = useRef(zoneFilter);
   buildingsRef.current = buildings;
   ghostRef.current = ghostBuilding;
   onPickRef.current = onPick;
+  filterRef.current = zoneFilter;
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -874,10 +956,9 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       canvas.style.width = window.innerWidth + "px";
       canvas.style.height = window.innerHeight + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (stars.current.length === 0) {
-        stars.current = makeStars(160, window.innerWidth, window.innerHeight);
-        clouds.current = makeClouds(6, window.innerWidth, window.innerHeight);
-      }
+      stars.current = makeStars(160, window.innerWidth, window.innerHeight);
+      clouds.current = makeClouds(6, window.innerWidth, window.innerHeight);
+      rain.current = makeRain(220, window.innerWidth, window.innerHeight);
     }
     resize();
     window.addEventListener("resize", resize);
@@ -893,6 +974,19 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         },
         focusOn: (wx: number) => {
           cam.current.targetX = wx - window.innerWidth / 2 / cam.current.targetZoom;
+        },
+        getState: () => ({
+          x: cam.current.x,
+          zoom: cam.current.zoom,
+          worldWidth: cam.current.worldWidth,
+          viewW: window.innerWidth,
+        }),
+        snapshot: () => {
+          try {
+            return canvas.toDataURL("image/png");
+          } catch {
+            return null;
+          }
         },
       };
     }
@@ -959,13 +1053,17 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
 
       ctx.clearRect(0, 0, W, H);
 
+      const day = dayFactorNow();
+      const weather = weatherNow();
+
       // background (screen space)
-      drawSky(ctx, W, H, t);
-      drawStars(ctx, stars.current, t);
+      drawSky(ctx, W, H, t, day);
+      drawStars(ctx, stars.current, t, day);
       drawClouds(ctx, clouds.current, W, dt);
       drawSkyline(ctx, W, H, cam.current.x, cam.current.zoom);
 
       const layout = computeCityLayout(buildingsRef.current);
+      cam.current.worldWidth = layout.worldWidth;
       const gY = groundScreen();
       const zoom = cam.current.zoom;
 
@@ -1021,6 +1119,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       }
 
       // buildings (depth: draw in world order, spawn pop-in)
+      const activeFilter = filterRef.current;
       for (const p of layout.positioned) {
         const sx = worldXToScreen(p.x);
         if (sx < -160 || sx > W + 160) continue;
@@ -1029,6 +1128,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         const age = now - (spawnAt.current.get(addr) || now);
         const pop = age < 520 ? easeOutBack(age / 520) : 1;
         ctx.save();
+        if (activeFilter && p.building.zone !== activeFilter) ctx.globalAlpha = 0.16;
         ctx.translate(sx, gY);
         ctx.scale(zoom * pop, zoom * pop);
         drawItem(ctx, p.building, 0, 0, t);
@@ -1046,6 +1146,9 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         drawItem(ctx, ghost, 0, 0, t);
         ctx.restore();
       }
+
+      // foreground weather (rain streaks / fog)
+      drawWeather(ctx, W, H, weather, rain.current, dt, day);
 
       raf = requestAnimationFrame(frame);
     }

@@ -75,6 +75,36 @@ export default function Page() {
 
   const cameraRef = useRef<CameraControls | null>(null);
 
+  // when a building in the city is clicked, show its card and resolve
+  // the owner's Base domain (basename) so we can tell who it is.
+  const handlePick = useCallback((b: CityBuilding | null) => {
+    setSelected(b);
+    if (!b || b.basename !== undefined) return;
+    fetch(`/api/basename?address=${b.address}`)
+      .then((r) => r.json())
+      .then((j) => {
+        const name = (j?.basename ?? null) as string | null;
+        setSelected((cur) =>
+          cur && cur.address.toLowerCase() === b.address.toLowerCase()
+            ? { ...cur, basename: name }
+            : cur
+        );
+        // cache on the city building so later clicks are instant
+        setBuildings((prev) =>
+          prev.map((x) =>
+            x.address.toLowerCase() === b.address.toLowerCase() ? { ...x, basename: name } : x
+          )
+        );
+      })
+      .catch(() => {
+        setSelected((cur) =>
+          cur && cur.address.toLowerCase() === b.address.toLowerCase()
+            ? { ...cur, basename: null }
+            : cur
+        );
+      });
+  }, []);
+
   const loadCity = useCallback(async () => {
     try {
       const res = await fetch("/api/city", { cache: "no-store" });
@@ -204,7 +234,7 @@ export default function Page() {
 
   return (
     <div className="stage">
-      <CityCanvas buildings={buildings} ghostBuilding={reveal} onPick={setSelected} cameraRef={cameraRef} />
+      <CityCanvas buildings={buildings} ghostBuilding={reveal} onPick={handlePick} cameraRef={cameraRef} />
 
       <div className="overlay-top">
         <div className="brand">
@@ -345,7 +375,18 @@ export default function Page() {
         >
           <div className="reveal-emoji" style={{ fontSize: 46 }}>{ITEM_META[selected.itemType as ItemType].emoji}</div>
           <div className="reveal-label" style={{ fontSize: 20 }}>{ITEM_META[selected.itemType as ItemType].label}</div>
-          <div className="reveal-addr">{displayName(selected)}</div>
+          {selected.basename ? (
+            <>
+              <div className="reveal-addr" style={{ color: "var(--reveal-accent)", fontWeight: 700 }}>
+                🔵 {selected.basename}
+              </div>
+              <div className="reveal-addr" style={{ fontSize: 12, opacity: 0.7 }}>{short(selected.address)}</div>
+            </>
+          ) : selected.basename === undefined ? (
+            <div className="reveal-addr" style={{ opacity: 0.7 }}>Resolving Base name…</div>
+          ) : (
+            <div className="reveal-addr">{short(selected.address)}</div>
+          )}
           <div className="stat-grid">
             <div className="stat-tile">
               <div className="stat-value">{selected.balanceEth.toFixed(4)}</div>
