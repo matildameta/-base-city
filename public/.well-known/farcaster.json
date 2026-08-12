@@ -1,8 +1,8 @@
 {
   "accountAssociation": {
-    "header": "PUT_HEADER_FROM_WARPCAST_MANIFEST_TOOL",
-    "payload": "PUT_PAYLOAD_FROM_WARPCAST_MANIFEST_TOOL",
-    "signature": "PUT_SIGNATURE_FROM_WARPCAST_MANIFEST_TOOL"
+    "header": "eyJmaWQiOjM5NDAxNSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDdkNWFDODI4MDMwOTQwNkU4RGY4MDFBNTM3QkQ5NzQ1ZjgxZDQwRDQifQ",
+    "payload": "eyJkb21haW4iOiJiYXNlY2l0eS52ZXJjZWwuYXBwIn0",
+    "signature": "g8cpQ2tTDOzuO7cOaUHL79dZvpgBbpelxSd2cx2APi5tEtwL/Myp6fIpnD74PVJzKtrctOVz445cBMClj6cJVhs="
   },
   "miniapp": {
     "version": "1",
