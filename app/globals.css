@@ -512,4 +512,52 @@ input[type="text"]:focus {
   .panel { left: 8px; right: 8px; width: auto; }
   .legend { display: none; }
   .brand-sub { display: none; }
+  .city-stats { gap: 10px; padding: 6px 10px; }
+  .cstat span { display: none; }
 }
+
+/* ---------- live city stats bar ---------- */
+.city-stats {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 18px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(10, 16, 32, 0.72);
+  border: 1px solid rgba(120, 150, 210, 0.22);
+  backdrop-filter: blur(10px);
+  z-index: 20;
+  pointer-events: none;
+}
+.cstat { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.cstat b { font-size: 15px; color: #eaf0ff; font-family: var(--font-display, sans-serif); }
+.cstat span { font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: #7c8aa8; }
+
+/* ---------- owner identity (Farcaster) ---------- */
+.owner-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+.owner-pfp { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--reveal-accent, #4fd0ff); }
+.owner-meta { text-align: left; }
+.owner-name { font-weight: 700; font-size: 15px; color: #eaf0ff; }
+.owner-sub { font-size: 12px; color: #8b98b8; }
+.owner-bio { font-size: 12px; color: #9aa6c4; font-style: italic; margin: 2px 0 6px; max-width: 300px; }
+
+/* ---------- info chips ---------- */
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 8px 0 2px; }
+.mini-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(120, 150, 210, 0.12);
+  border: 1px solid rgba(120, 150, 210, 0.2);
+  color: #b9c5e2;
+}
+
+/* ---------- legend extras ---------- */
+.legend-ex { display: block; margin-top: 2px; font-size: 13px; opacity: 0.9; letter-spacing: 1px; }
+.legend-foot { margin-top: 8px; font-size: 11px; color: #7c8aa8; line-height: 1.4; }
+
+/* ---------- leaderboard pfp ---------- */
+.lb-pfp { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(120,150,210,0.3); }

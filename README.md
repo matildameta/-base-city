@@ -1,9 +1,13 @@
 # 🏙️ Base City
 
 A full-screen, zoomable, pannable living city built from Base on-chain activity.
-Every wallet address becomes one of **24 distinct items**, placed in the right district. Minting
-an item is a real transaction on Base — once minted, you have a permanent spot in the shared city,
+Every wallet address becomes one of **52 distinct buildings**, placed in the right district. Minting
+a plot is a real transaction on Base — once minted, you have a permanent spot in the shared city,
 visible to everyone, forever.
+
+Owners are shown by their **Farcaster** profile (name + avatar, via Neynar) or their **Basename**,
+falling back to a shortened address. Click any building to see who it is, their balance (with a live
+USD estimate), activity, rarity and a link to Basescan.
 
 Built as a Farcaster Mini App / Base App, ready to deploy on Vercel.
 
@@ -13,13 +17,13 @@ Your wallet is read live from a free public Base RPC (balance, tx count, whether
 and mapped into a district + item. Each category has 2–3 visual variants (chosen deterministically
 from your address) so not everyone in the same tier looks identical:
 
-| District | Who ends up there | Items |
+| District | Who ends up there | Example buildings (of 52) |
 |---|---|---|
-| 🪦 The Outskirts | Dead / dust wallets | Ruined Lot, Abandoned Lot, Trash Pile, Trash Can, Broken Bench |
-| 🏡 Residential | ETH holders | Cottage, Small House, House, Townhouse, Mansion, Villa |
-| 🏪 Market Street | Frequent traders | Street Kiosk, Market Stall, Shop, Shopping Mall, Trading Floor |
-| 🏛️ Downtown & Civic | Whales & large contracts (DAOs) | Tower, Skyscraper, Bank & Vault, Office, DAO Hall, Courthouse |
-| 🏭 Industrial | Active contracts / dapps | Workshop, Warehouse, Factory, Power Plant |
+| 🪦 The Outskirts | Dead / dust wallets | Ruined Lot, Abandoned Lot, Trash Pile, Broken Bench, Cracked Road, Dead Tree, Rubble, Wrecked Car, Scrap Tent |
+| 🏡 Residential | ETH holders | Cottage, Small House, House, Townhouse, Duplex, Bungalow, Apartments, Loft, Garden Villa, Mansion, Grand Villa, Penthouse |
+| 🏪 Market Street | Frequent traders | Kiosk, Market Stall, Café, Boutique, Shop, Supermarket, Arcade, Hotel, Mall, Trading Floor |
+| 🏛️ Downtown & Civic | Whales & large contracts (DAOs) | Office, Courthouse, Museum, Embassy, Tower, HQ Tower, DAO Hall, Exchange, Bank & Vault, Skyscraper, Spire, Observatory |
+| 🏭 Industrial | Active contracts / dapps | Workshop, Warehouse, Factory, Shipyard, Refinery, Power Plant, Solar Farm, Data Center |
 
 The city also ships with **genesis landmarks** that are always there regardless of users: a City
 Hall, a park with a fountain and trees, a river with a bridge, street lights, and a road running
@@ -73,11 +77,12 @@ on Vercel serverless cold starts):
    - Copy the REST URL + token into `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` in Vercel.
 
 Optional:
+   - `NEYNAR_API_KEY` — enables Farcaster names + avatars on the leaderboard and info cards
+     (get a free key at https://neynar.com). Without it, owners fall back to Basename / address.
    - `BASE_RPC_URL` — your own Base RPC (Alchemy/Infura/etc.) for higher rate limits than the free
      public one.
    - `MAINNET_RPC_URL` — a mainnet RPC used only for Basename lookups (ENSIP-19 resolution starts
      on L1). Defaults to a public one; a private RPC resolves faster and more reliably.
-   - `BASESCAN_API_KEY` — reserved for future richer heuristics, not required today.
 
 ---
 
@@ -119,14 +124,24 @@ address as a permanent citizen, with a real transaction on Base.
 
 ---
 
-## About the API key you shared
+## Free RPC + Neynar setup (recommended for production)
 
-That key belongs to a Telegram bot (EtherDrops), used for transaction notifications — it isn't a
-documented public API for this use case, and since it's tied to your account it's best not to put
-it in code that ends up in a public repo. This app doesn't need it: it reads directly from Base's
-public RPC. If you later want richer signals (e.g. more precise trader/DAO detection from token
-transfer history), better free options are the Basescan API (free with an API key) or Alchemy's
-free tier.
+The app works out of the box on the public Base RPC, but that endpoint is rate-limited and will be
+slow/unreliable under real traffic. For a launch, add your own — both are free:
+
+**Base RPC (Alchemy):**
+1. Sign up at https://alchemy.com → Create App → Chain: **Base**, Network: **Base Mainnet**.
+2. Copy the HTTPS URL (looks like `https://base-mainnet.g.alchemy.com/v2/XXXX`).
+3. In Vercel → Settings → Environment Variables, set `BASE_RPC_URL` to that URL, then redeploy.
+   (Optional: create a **Base Sepolia** app too and use it while testing.)
+
+**Farcaster names (Neynar):**
+1. Sign up at https://neynar.com and copy your API key.
+2. In Vercel, set `NEYNAR_API_KEY` to that key, then redeploy.
+
+Keep both keys **only in environment variables** — never commit them. Locally they live in
+`.env.local` (gitignored). If a key was ever pasted in plaintext (chat, screenshot, commit), rotate
+it in the provider dashboard.
 
 ---
 
@@ -136,18 +151,24 @@ free tier.
 app/
   page.tsx                 Full-screen UI: search/preview/mint, leaderboard, zoom controls
   layout.tsx                Mini App / Open Graph metadata
-  api/analyze/route.ts       Classify an address (preview only, not saved)
+  api/analyze/route.ts       Classify an address (preview only, not saved) + identity + ETH price
   api/claim/route.ts         Verify a claimPlot() tx on-chain, then permanently save the building
   api/city/route.ts          Return all minted buildings (shared city + leaderboard source)
   api/basename/route.ts      On-demand Basename lookup
+  api/farcaster/route.ts     Bulk Farcaster (Neynar) lookup for leaderboard rows
+  api/profile/route.ts       Owner identity (Basename + Farcaster) + live ETH price for a plot
+  plot/[address]/            Shareable deep link + dynamic Open Graph image
+  icon.tsx / apple-icon.tsx  Generated favicon / touch icon
 components/
-  CityCanvas.tsx             Full-screen zoom/pan renderer, 24 item types + genesis landmarks
+  CityCanvas.tsx             Full-screen zoom/pan renderer, 52 building types, day/night + weather
 lib/
-  classify.ts                On-chain data → district + item type + variant
-  cityLayout.ts               Lays out minted items into districts along a scrollable world
+  classify.ts                On-chain data → district + building type + variant
+  cityLayout.ts               Lays out minted buildings into districts along a scrollable world
   basename.ts                  Basename (ENSIP-19) resolution with cache + timeout fallback
+  neynar.ts                    Farcaster identity resolution (Neynar bulk-by-address)
+  price.ts                     Cached ETH/USD spot price (Coinbase)
   store.ts                     Shared storage (Upstash Redis if configured, else in-memory)
-  baseClient.ts                 Base RPC client
+  baseClient.ts                Base RPC client
 contracts/
   BaseCityRegistry.sol           On-chain registry — claimPlot() records permanent ownership
 public/.well-known/farcaster.json  Mini App manifest

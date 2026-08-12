@@ -7,8 +7,26 @@ import confetti from "canvas-confetti";
 import CityCanvas, { CameraControls } from "@/components/CityCanvas";
 import type { CityBuilding, ItemType, Rarity } from "@/lib/classify";
 import { ITEM_META, RARITY_META, rarityOf } from "@/lib/classify";
+import type { FarcasterProfile } from "@/lib/neynar";
 
 const REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS as `0x${string}` | undefined;
+
+// Base mainnet (chainId 8453 = 0x2105) — used to force-switch the wallet.
+const BASE_CHAIN_ID = "0x2105";
+const BASE_CHAIN_PARAMS = {
+  chainId: BASE_CHAIN_ID,
+  chainName: "Base",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: ["https://mainnet.base.org"],
+  blockExplorerUrls: ["https://basescan.org"],
+};
+
+// A building enriched with owner identity + live price (client-side only).
+type Enriched = CityBuilding & {
+  basename?: string | null;
+  farcaster?: FarcasterProfile | null;
+  ethUsd?: number | null;
+};
 
 const REGISTRY_ABI = [
   { type: "function", name: "claimPlot", stateMutability: "nonpayable", inputs: [], outputs: [] },
@@ -23,10 +41,6 @@ const SCAN_STEPS = [
 
 function short(addr: string) {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
-}
-
-function displayName(b: { address: string; basename?: string | null }) {
-  return b.basename || short(b.address);
 }
 
 // eased numeric count-up used in the reveal stat tiles
@@ -66,12 +80,14 @@ export default function Page() {
   const [account, setAccount] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [selected, setSelected] = useState<CityBuilding | null>(null);
+  const [selected, setSelected] = useState<Enriched | null>(null);
+  const [fcMap, setFcMap] = useState<Record<string, FarcasterProfile | null>>({});
+  const fcFetched = useRef<Set<string>>(new Set());
 
   // scan + reveal flow
   const [scanning, setScanning] = useState(false);
   const [scanStep, setScanStep] = useState(0);
-  const [reveal, setReveal] = useState<(CityBuilding & { alreadyMinted?: boolean }) | null>(null);
+  const [reveal, setReveal] = useState<(Enriched & { alreadyMinted?: boolean }) | null>(null);
 
   const cameraRef = useRef<CameraControls | null>(null);
 
@@ -79,27 +95,20 @@ export default function Page() {
   // the owner's Base domain (basename) so we can tell who it is.
   const handlePick = useCallback((b: CityBuilding | null) => {
     setSelected(b);
-    if (!b || b.basename !== undefined) return;
-    fetch(`/api/basename?address=${b.address}`)
+    if (!b) return;
+    fetch(`/api/profile?address=${b.address}`)
       .then((r) => r.json())
       .then((j) => {
-        const name = (j?.basename ?? null) as string | null;
         setSelected((cur) =>
           cur && cur.address.toLowerCase() === b.address.toLowerCase()
-            ? { ...cur, basename: name }
+            ? { ...cur, basename: j?.basename ?? null, farcaster: j?.farcaster ?? null, ethUsd: j?.ethUsd ?? null }
             : cur
-        );
-        // cache on the city building so later clicks are instant
-        setBuildings((prev) =>
-          prev.map((x) =>
-            x.address.toLowerCase() === b.address.toLowerCase() ? { ...x, basename: name } : x
-          )
         );
       })
       .catch(() => {
         setSelected((cur) =>
           cur && cur.address.toLowerCase() === b.address.toLowerCase()
-            ? { ...cur, basename: null }
+            ? { ...cur, basename: cur.basename ?? null, farcaster: null }
             : cur
         );
       });
@@ -133,6 +142,22 @@ export default function Page() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // resolve Farcaster identities for city members (for the leaderboard + rows)
+  useEffect(() => {
+    const missing = buildings
+      .map((b) => b.address.toLowerCase())
+      .filter((a) => !fcFetched.current.has(a))
+      .slice(0, 100);
+    if (missing.length === 0) return;
+    missing.forEach((a) => fcFetched.current.add(a));
+    fetch(`/api/farcaster?addresses=${missing.join(",")}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j?.profiles) setFcMap((prev) => ({ ...prev, ...j.profiles }));
+      })
+      .catch(() => {});
+  }, [buildings]);
+
   // scanning overlay drives through the steps, then reveals the plot
   async function runScan(addr: string) {
     setError("");
@@ -165,6 +190,21 @@ export default function Page() {
       setError("Failed to read on-chain data");
     }
   }
+  async function ensureBaseNetwork(eth: any) {
+    try {
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_CHAIN_ID }] });
+    } catch (e: any) {
+      // 4902 = chain not added to the wallet yet
+      if (e?.code === 4902) {
+        try {
+          await eth.request({ method: "wallet_addEthereumChain", params: [BASE_CHAIN_PARAMS] });
+        } catch {
+          /* user declined adding Base */
+        }
+      }
+    }
+  }
+
   async function connectWallet() {
     const eth = (window as any).ethereum;
     if (!eth) {
@@ -173,12 +213,22 @@ export default function Page() {
     }
     try {
       const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+      await ensureBaseNetwork(eth);
       setAccount(accounts[0]);
       setInput(accounts[0]);
       runScan(accounts[0]);
     } catch {
       setError("Wallet connection was rejected");
     }
+  }
+
+  function disconnectWallet() {
+    setAccount(null);
+    setInput("");
+    setReveal(null);
+    setSelected(null);
+    setError("");
+    setToast("Wallet disconnected");
   }
 
   async function mint() {
@@ -199,6 +249,7 @@ export default function Page() {
     setMinting(true);
     setError("");
     try {
+      await ensureBaseNetwork(eth);
       const data = encodeFunctionData({ abi: REGISTRY_ABI, functionName: "claimPlot" });
       const txHash = await eth.request({
         method: "eth_sendTransaction",
@@ -232,6 +283,34 @@ export default function Page() {
   const revealRarity: Rarity | null = reveal ? rarityOf(reveal) : null;
   const revealMeta = reveal ? ITEM_META[reveal.itemType as ItemType] : null;
 
+  // live city stats
+  const citizens = buildings.length;
+  const totalEth = buildings.reduce((s, b) => s + b.balanceEth, 0);
+  const whales = buildings.filter((b) => b.zone === "downtown").length;
+  const contracts = buildings.filter((b) => b.isContract).length;
+  const onFarcaster = buildings.filter((b) => fcMap[b.address.toLowerCase()]).length;
+
+  // owner label used across rows/cards: Farcaster > Basename > short address
+  function ownerName(b: Enriched): string {
+    const fc = b.farcaster ?? fcMap[b.address.toLowerCase()];
+    if (fc?.username) return `@${fc.username}`;
+    if (b.basename) return b.basename;
+    return short(b.address);
+  }
+  function pfpOf(b: Enriched): string | null {
+    const fc = b.farcaster ?? fcMap[b.address.toLowerCase()];
+    return fc?.pfpUrl ?? null;
+  }
+
+  const APP_URL = typeof window !== "undefined" ? window.location.origin : "";
+  function shareToWarpcast(b: Enriched) {
+    const meta = ITEM_META[b.itemType as ItemType];
+    const url = `${APP_URL}/plot/${b.address}`;
+    const text = `${ownerName(b)} is a ${meta.label} ${meta.emoji} in Base City 🏙️`;
+    const intent = `https://warpcast.com/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(url)}`;
+    window.open(intent, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <div className="stage">
       <CityCanvas buildings={buildings} ghostBuilding={reveal} onPick={handlePick} cameraRef={cameraRef} />
@@ -249,8 +328,8 @@ export default function Page() {
             🏆 Leaderboard
           </button>
           {account ? (
-            <button className="ghost" disabled>
-              🟢 {short(account)}
+            <button className="ghost" onClick={disconnectWallet} title="Disconnect wallet">
+              🟢 {short(account)} · Disconnect
             </button>
           ) : (
             <button onClick={connectWallet}>Connect Wallet</button>
@@ -258,13 +337,23 @@ export default function Page() {
         </div>
       </div>
 
+      {/* ---- live city stats bar ---- */}
+      <div className="city-stats">
+        <div className="cstat"><b>{citizens}</b><span>citizens</span></div>
+        <div className="cstat"><b>{totalEth.toFixed(2)} Ξ</b><span>on-chain</span></div>
+        <div className="cstat"><b>{whales}</b><span>downtown</span></div>
+        <div className="cstat"><b>{contracts}</b><span>contracts</span></div>
+        <div className="cstat"><b>{onFarcaster}</b><span>on Farcaster</span></div>
+      </div>
+
       <div className="legend">
-        <div className="legend-title">Districts</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#6b7280" }} />🪦 Outskirts — dead wallets</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#5b82c4" }} />🏡 Residential — holders</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#e08b52" }} />🏪 Market Street — traders</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#9b7bff" }} />🏛️ Downtown — whales &amp; DAOs</div>
-        <div className="legend-item"><span className="legend-dot" style={{ background: "#7a8590" }} />🏭 Industrial — contracts</div>
+        <div className="legend-title">5 districts · 52 building types</div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "#6b7280" }} />🪦 Outskirts — dead / dust wallets <span className="legend-ex">🕳️🗑️🚮🪑🛣️🥀🧱🚗⛺</span></div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "#5b82c4" }} />🏡 Residential — holders <span className="legend-ex">🏚️🏠🏡🏘️🛖🏢🏙️🏛️🏰🌆</span></div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "#e08b52" }} />🏪 Market Street — traders <span className="legend-ex">🛒🎪☕👗🏪🛍️🕹️🏨🏬📈</span></div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "#9b7bff" }} />🏛️ Downtown — whales &amp; DAOs <span className="legend-ex">🏢⚖️🏛️🏳️🗼💹🏦🌃🔭</span></div>
+        <div className="legend-item"><span className="legend-dot" style={{ background: "#7a8590" }} />🏭 Industrial — contracts <span className="legend-ex">🔧📦🏭⚓⛽⚡☀️🖥️</span></div>
+        <div className="legend-foot">Your wallet becomes 1 of 52 unique buildings — decided by balance, activity &amp; contract code.</div>
       </div>
 
       <div className="zoom-controls">
@@ -331,12 +420,27 @@ export default function Page() {
                 {revealMeta.emoji}
               </motion.div>
               <div className="reveal-label">{revealMeta.label}</div>
-              <div className="reveal-addr">{displayName(reveal)}</div>
+              {reveal.farcaster ? (
+                <div className="owner-row" style={{ justifyContent: "center" }}>
+                  {reveal.farcaster.pfpUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img className="owner-pfp" src={reveal.farcaster.pfpUrl} alt="" />
+                  ) : null}
+                  <div className="owner-meta">
+                    <div className="owner-name">{reveal.farcaster.displayName || reveal.farcaster.username}{reveal.farcaster.powerBadge && " ⚡"}</div>
+                    <div className="owner-sub">@{reveal.farcaster.username} · {reveal.farcaster.followerCount.toLocaleString()} followers</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="reveal-addr">{ownerName(reveal)}</div>
+              )}
               <div className="rarity-chip">{RARITY_META[revealRarity].label}</div>
               <div className="stat-grid">
                 <div className="stat-tile">
-                  <div className="stat-value"><CountUp value={reveal.balanceEth} decimals={4} /></div>
-                  <div className="stat-label">ETH Balance</div>
+                  <div className="stat-value"><CountUp value={reveal.balanceEth} decimals={4} /> Ξ</div>
+                  <div className="stat-label">
+                    {reveal.ethUsd ? `≈ $${(reveal.balanceEth * reveal.ethUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "ETH Balance"}
+                  </div>
                 </div>
                 <div className="stat-tile">
                   <div className="stat-value"><CountUp value={reveal.txCount} /></div>
@@ -351,6 +455,7 @@ export default function Page() {
                     {minting ? "Minting on Base…" : "🧾 Mint this plot on Base"}
                   </button>
                 )}
+                <button className="ghost" onClick={() => shareToWarpcast(reveal)}>🟣 Share on Warpcast</button>
                 <button className="ghost" onClick={() => setReveal(null)}>Close</button>
                 {error && <div className="error-row">{error}</div>}
               </div>
@@ -375,29 +480,66 @@ export default function Page() {
         >
           <div className="reveal-emoji" style={{ fontSize: 46 }}>{ITEM_META[selected.itemType as ItemType].emoji}</div>
           <div className="reveal-label" style={{ fontSize: 20 }}>{ITEM_META[selected.itemType as ItemType].label}</div>
-          {selected.basename ? (
-            <>
-              <div className="reveal-addr" style={{ color: "var(--reveal-accent)", fontWeight: 700 }}>
-                🔵 {selected.basename}
-              </div>
-              <div className="reveal-addr" style={{ fontSize: 12, opacity: 0.7 }}>{short(selected.address)}</div>
-            </>
-          ) : selected.basename === undefined ? (
-            <div className="reveal-addr" style={{ opacity: 0.7 }}>Resolving Base name…</div>
-          ) : (
-            <div className="reveal-addr">{short(selected.address)}</div>
-          )}
+
+          {/* owner identity: Farcaster > Basename > address */}
+          {(() => {
+            const fc = selected.farcaster ?? fcMap[selected.address.toLowerCase()];
+            if (fc) {
+              return (
+                <div className="owner-row">
+                  {fc.pfpUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img className="owner-pfp" src={fc.pfpUrl} alt="" />
+                  ) : null}
+                  <div className="owner-meta">
+                    <div className="owner-name">
+                      {fc.displayName || fc.username}
+                      {fc.powerBadge && <span title="Power badge"> ⚡</span>}
+                    </div>
+                    <div className="owner-sub">@{fc.username} · {fc.followerCount.toLocaleString()} followers</div>
+                  </div>
+                </div>
+              );
+            }
+            if (selected.basename) {
+              return <div className="reveal-addr" style={{ color: "var(--reveal-accent)", fontWeight: 700 }}>🔵 {selected.basename}</div>;
+            }
+            if (selected.farcaster === undefined && selected.basename === undefined) {
+              return <div className="reveal-addr" style={{ opacity: 0.7 }}>Resolving identity…</div>;
+            }
+            return <div className="reveal-addr">{short(selected.address)}</div>;
+          })()}
+          {selected.farcaster?.bio && <div className="owner-bio">“{selected.farcaster.bio}”</div>}
+
+          <div className="rarity-chip" style={{ ["--reveal-accent" as any]: RARITY_META[rarityOf(selected)].color }}>
+            {RARITY_META[rarityOf(selected)].label} · {ITEM_META[selected.itemType as ItemType].zone}
+          </div>
+
           <div className="stat-grid">
             <div className="stat-tile">
-              <div className="stat-value">{selected.balanceEth.toFixed(4)}</div>
-              <div className="stat-label">ETH Balance</div>
+              <div className="stat-value">{selected.balanceEth.toFixed(4)} Ξ</div>
+              <div className="stat-label">
+                {selected.ethUsd ? `≈ $${(selected.balanceEth * selected.ethUsd).toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "ETH Balance"}
+              </div>
             </div>
             <div className="stat-tile">
-              <div className="stat-value">{selected.txCount}</div>
-              <div className="stat-label">Transactions</div>
+              <div className="stat-value">{selected.txCount.toLocaleString()}</div>
+              <div className="stat-label">{selected.isContract ? "Contract calls" : "Transactions"}</div>
             </div>
           </div>
+          <div className="chip-row">
+            <span className="mini-chip">{selected.isContract ? "🤖 Smart contract" : "👛 Wallet (EOA)"}</span>
+            <span className="mini-chip">nonce {selected.txCount}</span>
+            {(selected.farcaster ?? fcMap[selected.address.toLowerCase()]) && (
+              <span className="mini-chip">fid {(selected.farcaster ?? fcMap[selected.address.toLowerCase()])!.fid}</span>
+            )}
+          </div>
+
           <div className="reveal-actions">
+            <button onClick={() => shareToWarpcast(selected)}>🟣 Share on Warpcast</button>
+            <a href={`https://basescan.org/address/${selected.address}`} target="_blank" rel="noreferrer">
+              <button className="ghost" style={{ width: "100%", justifyContent: "center" }}>🔎 View on Basescan</button>
+            </a>
             <button className="ghost" onClick={() => setSelected(null)}>Close</button>
           </div>
         </motion.div>
@@ -434,17 +576,25 @@ export default function Page() {
                 No one has minted yet — be the first citizen of Base City.
               </div>
             )}
-            {leaderboard.map((b, i) => (
-              <div className="lb-row" key={b.address} onClick={() => { setSelected(b); cameraRef.current?.focusOn(0); }}>
-                <div className="lb-rank">{i + 1}</div>
-                <div className="lb-emoji">{ITEM_META[b.itemType as ItemType].emoji}</div>
-                <div className="lb-info">
-                  <div className="lb-name">{displayName(b)}</div>
-                  <div className="lb-type">{ITEM_META[b.itemType as ItemType].label}</div>
+            {leaderboard.map((b, i) => {
+              const fc = fcMap[b.address.toLowerCase()];
+              return (
+                <div className="lb-row" key={b.address} onClick={() => handlePick(b)}>
+                  <div className="lb-rank">{i + 1}</div>
+                  {fc?.pfpUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img className="lb-pfp" src={fc.pfpUrl} alt="" />
+                  ) : (
+                    <div className="lb-emoji">{ITEM_META[b.itemType as ItemType].emoji}</div>
+                  )}
+                  <div className="lb-info">
+                    <div className="lb-name">{ownerName(b)}</div>
+                    <div className="lb-type">{ITEM_META[b.itemType as ItemType].label}</div>
+                  </div>
+                  <span className="badge">{b.balanceEth.toFixed(2)} Ξ</span>
                 </div>
-                <span className="badge">{b.balanceEth.toFixed(2)} Ξ</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

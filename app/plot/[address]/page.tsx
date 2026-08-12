@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { classifyAddress, ITEM_META, RARITY_META, rarityOf } from "@/lib/classify";
 import { resolveBasename } from "@/lib/basename";
+import { resolveFarcaster } from "@/lib/neynar";
 
 export const dynamic = "force-dynamic";
 
@@ -51,9 +52,10 @@ export default async function PlotPage({ params }: { params: { address: string }
     );
   }
 
-  const [b, basename] = await Promise.all([
+  const [b, basename, farcaster] = await Promise.all([
     classifyAddress(addr as `0x${string}`),
     resolveBasename(addr).catch(() => null),
+    resolveFarcaster(addr).catch(() => null),
   ]);
   const meta = ITEM_META[b.itemType];
   const rarity = rarityOf(b);
@@ -63,7 +65,20 @@ export default async function PlotPage({ params }: { params: { address: string }
       <div className="reveal-card" style={{ maxWidth: 440 }}>
         <div className="reveal-emoji float">{meta.emoji}</div>
         <div className="reveal-label">{meta.label}</div>
-        <div className="reveal-addr">{basename || short(addr)}</div>
+        {farcaster ? (
+          <div className="owner-row" style={{ justifyContent: "center" }}>
+            {farcaster.pfpUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img className="owner-pfp" src={farcaster.pfpUrl} alt="" />
+            ) : null}
+            <div className="owner-meta">
+              <div className="owner-name">{farcaster.displayName || farcaster.username}</div>
+              <div className="owner-sub">@{farcaster.username} · {farcaster.followerCount.toLocaleString()} followers</div>
+            </div>
+          </div>
+        ) : (
+          <div className="reveal-addr">{basename || short(addr)}</div>
+        )}
         <div className="rarity-chip" style={{ ["--reveal-accent" as any]: RARITY_META[rarity].color }}>
           {RARITY_META[rarity].label}
         </div>
