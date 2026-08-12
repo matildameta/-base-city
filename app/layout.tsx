@@ -20,10 +20,10 @@ const miniAppEmbed = {
 
 export const metadata: Metadata = {
   title: "Base City",
-  description: "کل Base یک شهر زنده است. هر آدرس یک ساختمان.",
+  description: "All of Base is a living city. Every address becomes a building.",
   openGraph: {
     title: "Base City",
-    description: "کل Base یک شهر زنده است. هر آدرس یک ساختمان.",
+    description: "All of Base is a living city. Every address becomes a building.",
     images: [`${APP_URL}/og.png`],
   },
   other: {
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fa" dir="rtl">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

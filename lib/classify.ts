@@ -1,43 +1,103 @@
 import { formatEther } from "viem";
 import { publicClient } from "./baseClient";
 
-export type BuildingType =
-  | "house" // ETH holder, low activity
-  | "shop" // trader, frequent tx
-  | "office" // DAO / multisig-like contract
-  | "tower" // whale
-  | "factory" // active contract (dapp)
-  | "ruin"; // dead wallet
+export type Zone = "wasteland" | "residential" | "commercial" | "downtown" | "industrial";
+
+export type ItemType =
+  // wasteland — dead / dust wallets
+  | "ruin"
+  | "abandoned_lot"
+  | "trash_pile"
+  | "trash_can"
+  | "old_bench"
+  // residential — holders
+  | "cottage"
+  | "small_house"
+  | "house"
+  | "townhouse"
+  | "mansion"
+  | "villa"
+  // commercial — traders
+  | "kiosk"
+  | "market_stall"
+  | "shop"
+  | "mall"
+  | "trading_floor"
+  // downtown — whales & DAOs
+  | "tower"
+  | "skyscraper"
+  | "bank_vault"
+  | "office"
+  | "dao_hall"
+  | "courthouse"
+  // industrial — active contracts
+  | "workshop"
+  | "warehouse"
+  | "factory"
+  | "power_plant";
+
+export interface ItemMeta {
+  label: string;
+  zone: Zone;
+}
+
+export const ITEM_META: Record<ItemType, ItemMeta> = {
+  ruin: { label: "Ruined Lot", zone: "wasteland" },
+  abandoned_lot: { label: "Abandoned Lot", zone: "wasteland" },
+  trash_pile: { label: "Trash Pile", zone: "wasteland" },
+  trash_can: { label: "Trash Can", zone: "wasteland" },
+  old_bench: { label: "Broken Bench", zone: "wasteland" },
+  cottage: { label: "Cottage", zone: "residential" },
+  small_house: { label: "Small House", zone: "residential" },
+  house: { label: "House", zone: "residential" },
+  townhouse: { label: "Townhouse", zone: "residential" },
+  mansion: { label: "Mansion", zone: "residential" },
+  villa: { label: "Villa", zone: "residential" },
+  kiosk: { label: "Street Kiosk", zone: "commercial" },
+  market_stall: { label: "Market Stall", zone: "commercial" },
+  shop: { label: "Shop", zone: "commercial" },
+  mall: { label: "Shopping Mall", zone: "commercial" },
+  trading_floor: { label: "Trading Floor", zone: "commercial" },
+  tower: { label: "Tower", zone: "downtown" },
+  skyscraper: { label: "Skyscraper", zone: "downtown" },
+  bank_vault: { label: "Bank & Vault", zone: "downtown" },
+  office: { label: "Office Building", zone: "downtown" },
+  dao_hall: { label: "DAO Hall", zone: "downtown" },
+  courthouse: { label: "Courthouse", zone: "downtown" },
+  workshop: { label: "Workshop", zone: "industrial" },
+  warehouse: { label: "Warehouse", zone: "industrial" },
+  factory: { label: "Factory", zone: "industrial" },
+  power_plant: { label: "Power Plant", zone: "industrial" },
+};
 
 export interface CityBuilding {
   address: string;
-  type: BuildingType;
+  itemType: ItemType;
+  zone: Zone;
   balanceEth: number;
   txCount: number;
   isContract: boolean;
-  height: number; // 1-10, drives visual size
-  complexity: number; // 1-5, drives visual detail
-  lastSeen: number;
+  scale: number; // 0.7 - 1.6, drives visual size within its item type
+  claimedAt: number; // 0 = not yet minted (preview only)
+  basename?: string | null;
 }
 
-const WHALE_ETH = 50; // >50 ETH on Base = whale tower
-const ACTIVE_TX = 200; // frequent-tx threshold for "trader"
-
-async function basescanTxCount(address: string): Promise<number | null> {
-  const key = process.env.BASESCAN_API_KEY;
-  if (!key) return null;
-  try {
-    const res = await fetch(
-      `https://api.basescan.org/api?module=account&action=txlist&address=${address}&page=1&offset=1&sort=desc&apikey=${key}`,
-      { next: { revalidate: 0 } }
-    );
-    const json = await res.json();
-    // txlist doesn't give total count directly; fall back to null (RPC nonce used instead)
-    return Array.isArray(json.result) ? json.result.length : null;
-  } catch {
-    return null;
+function seeded(address: string) {
+  let h = 0;
+  for (let i = 0; i < address.length; i++) {
+    h = (h << 5) - h + address.charCodeAt(i);
+    h |= 0;
   }
+  return Math.abs(h);
 }
+
+function pick<T>(seed: number, options: T[]): T {
+  return options[seed % options.length];
+}
+
+const WHALE_ETH = 10;
+const MEGA_WHALE_ETH = 100;
+const DUST_ETH = 0.0005;
 
 export async function classifyAddress(address: `0x${string}`): Promise<CityBuilding> {
   const [balanceWei, txCount, code] = await Promise.all([
@@ -48,53 +108,54 @@ export async function classifyAddress(address: `0x${string}`): Promise<CityBuild
 
   const balanceEth = parseFloat(formatEther(balanceWei));
   const isContract = !!code && code !== "0x";
+  const seed = seeded(address);
 
-  let type: BuildingType;
-  let height: number;
-  let complexity: number;
+  let itemType: ItemType;
+  let scale = 0.85 + (seed % 100) / 200; // 0.85 - 1.35 base variance
 
   if (isContract) {
-    // Contracts: guess DAO/office vs generic factory by code size (rough heuristic)
     const codeSize = code ? (code.length - 2) / 2 : 0;
     if (codeSize > 20000) {
-      type = "office"; // big, complex contract -> looks like DAO/governance
-      complexity = 5;
-      height = Math.min(10, 4 + Math.floor(codeSize / 8000));
+      itemType = pick(seed, ["dao_hall", "office", "courthouse"]);
+      scale += 0.3;
+    } else if (codeSize > 6000) {
+      itemType = pick(seed, ["factory", "power_plant"]);
+      scale += 0.15;
     } else {
-      type = "factory";
-      complexity = 3;
-      height = Math.min(10, 3 + Math.floor(codeSize / 4000));
+      itemType = pick(seed, ["workshop", "warehouse"]);
     }
   } else if (balanceEth === 0 && txCount === 0) {
-    type = "ruin";
-    height = 1;
-    complexity = 1;
+    itemType = pick(seed, ["ruin", "abandoned_lot", "trash_pile"]);
+  } else if (balanceEth > 0 && balanceEth < DUST_ETH && txCount < 3) {
+    itemType = pick(seed, ["trash_can", "old_bench"]);
+  } else if (balanceEth >= MEGA_WHALE_ETH) {
+    itemType = pick(seed, ["skyscraper", "bank_vault"]);
+    scale += 0.4;
   } else if (balanceEth >= WHALE_ETH) {
-    type = "tower";
-    height = Math.min(10, 6 + Math.floor(Math.log2(balanceEth / WHALE_ETH + 1)));
-    complexity = 5;
-  } else if (txCount >= ACTIVE_TX) {
-    type = "shop";
-    height = Math.min(8, 3 + Math.floor(txCount / 300));
-    complexity = 3;
-  } else if (balanceEth > 0 || txCount > 0) {
-    type = "house";
-    height = Math.min(5, 2 + Math.floor(balanceEth));
-    complexity = 2;
+    itemType = pick(seed, ["tower", "skyscraper", "bank_vault"]);
+    scale += 0.25;
+  } else if (txCount >= 300) {
+    itemType = pick(seed, ["mall", "trading_floor"]);
+    scale += 0.15;
+  } else if (txCount >= 50) {
+    itemType = pick(seed, ["shop", "market_stall", "kiosk"]);
+  } else if (balanceEth >= 1) {
+    itemType = pick(seed, ["mansion", "villa"]);
+    scale += 0.1;
+  } else if (balanceEth >= 0.05 || txCount >= 5) {
+    itemType = pick(seed, ["house", "townhouse"]);
   } else {
-    type = "ruin";
-    height = 1;
-    complexity = 1;
+    itemType = pick(seed, ["cottage", "small_house"]);
   }
 
   return {
-    address,
-    type,
+    address: address.toLowerCase(),
+    itemType,
+    zone: ITEM_META[itemType].zone,
     balanceEth,
     txCount,
     isContract,
-    height,
-    complexity,
-    lastSeen: Date.now(),
+    scale: Math.min(1.6, Math.max(0.7, scale)),
+    claimedAt: 0,
   };
 }
