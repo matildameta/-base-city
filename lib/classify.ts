@@ -114,8 +114,8 @@ export function rarityOf(b: Pick<CityBuilding, "itemType" | "balanceEth" | "txCo
   const tier = ITEM_META[b.itemType].tier;
   if (tier >= 5 || b.balanceEth >= 100) return "legendary";
   if (tier >= 4 || b.balanceEth >= 10) return "epic";
-  if (tier >= 3 || b.balanceEth >= 1 || b.txCount >= 300) return "rare";
-  if (tier >= 2 || b.txCount >= 50) return "uncommon";
+  if (tier >= 3 || b.balanceEth >= 1 || b.txCount >= TX_BUSY) return "rare";
+  if (tier >= 2 || b.txCount >= TX_MODEST) return "uncommon";
   return "common";
 }
 
@@ -135,6 +135,15 @@ function pick<T>(seed: number, options: T[]): T {
 const WHALE_ETH = 10;
 const MEGA_WHALE_ETH = 100;
 const DUST_ETH = 0.0005;
+
+// Activity (transaction-count) ladder for EOAs. Deliberately strict — a couple
+// hundred transactions is an ordinary wallet, not a landmark. A genuinely busy
+// wallet ("a good building") starts in the thousands, and the elite trading
+// floors want 2500+ meaningful transactions.
+const TX_ELITE = 2500; // trading floor / mall — top-tier trader
+const TX_BUSY = 1000; // supermarket / hotel — clearly a good building
+const TX_ACTIVE = 400; // shop / boutique — established
+const TX_MODEST = 150; // kiosk / stall / café — small commercial
 
 export async function classifyAddress(address: `0x${string}`): Promise<CityBuilding> {
   const [balanceWei, txCount, code] = await Promise.all([
@@ -174,14 +183,17 @@ export async function classifyAddress(address: `0x${string}`): Promise<CityBuild
   } else if (balanceEth >= WHALE_ETH) {
     itemType = pick(seed, ["tower", "hq_tower", "bank_vault", "penthouse"]);
     scale += 0.25;
-  } else if (txCount >= 300) {
+  } else if (txCount >= TX_ELITE) {
     itemType = pick(seed, ["trading_floor", "mall", "arcade"]);
-    scale += 0.15;
-  } else if (txCount >= 100) {
+    scale += 0.2;
+  } else if (txCount >= TX_BUSY) {
     itemType = pick(seed, ["supermarket", "hotel", "arcade"]);
-    scale += 0.1;
-  } else if (txCount >= 50) {
-    itemType = pick(seed, ["shop", "market_stall", "kiosk", "cafe", "boutique"]);
+    scale += 0.12;
+  } else if (txCount >= TX_ACTIVE) {
+    itemType = pick(seed, ["shop", "boutique", "cafe"]);
+    scale += 0.05;
+  } else if (txCount >= TX_MODEST) {
+    itemType = pick(seed, ["kiosk", "market_stall", "cafe"]);
   } else if (balanceEth >= 1) {
     itemType = pick(seed, ["mansion", "villa", "penthouse", "garden_villa"]);
     scale += 0.1;
