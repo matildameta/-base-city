@@ -442,7 +442,12 @@ export default function Page() {
                 title="Disconnect wallet"
                 aria-label="Disconnect wallet"
               >
-                ⏻
+                {/* inline SVG power icon — the ⏻ glyph doesn't render in the
+                    Farcaster mini-app WebView (shows as a tofu box) */}
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" aria-hidden>
+                  <path d="M12 3.2v7.2" />
+                  <path d="M7.4 6.3a6.4 6.4 0 1 0 9.2 0" />
+                </svg>
               </button>
             </span>
           ) : (

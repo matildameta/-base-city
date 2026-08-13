@@ -1441,7 +1441,11 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     <canvas
       ref={canvasRef}
       className="city-canvas"
-      style={{ position: "fixed", inset: 0, display: "block", cursor: "grab" }}
+      // touchAction:none is essential inside the Farcaster / Base mini app: the
+      // host WebView otherwise claims horizontal swipes as its own scroll and
+      // cancels the pointer drag, so the city can't be panned left/right on
+      // touch (it works with a mouse, which is why it's fine in Chrome).
+      style={{ position: "fixed", inset: 0, display: "block", cursor: "grab", touchAction: "none" }}
     />
   );
 }
