@@ -100,6 +100,11 @@ export default function Page() {
 
   const cameraRef = useRef<CameraControls | null>(null);
 
+  // Inside a Farcaster / Base mini app there is no injected `window.ethereum`;
+  // the host hands us an EIP-1193 provider through the SDK. We stash it here and
+  // prefer it over `window.ethereum` for connect / network-switch / mint.
+  const fcProviderRef = useRef<any>(null);
+
   // when a building in the city is clicked, show its card and resolve
   // the owner's Base domain (basename) so we can tell who it is.
   const handlePick = useCallback((b: CityBuilding | null) => {
@@ -151,6 +156,13 @@ export default function Page() {
           if (!cancelled && inMini) {
             document.body.classList.add("mini");
             setIsMini(true);
+            // Grab the host wallet provider up front so connect/mint can use it.
+            try {
+              const provider = await sdk.wallet.getEthereumProvider();
+              if (provider) fcProviderRef.current = provider;
+            } catch {
+              /* host without a wallet provider */
+            }
             try {
               const ctx: any = await sdk.context;
               const insets = ctx?.client?.safeAreaInsets;
@@ -237,6 +249,12 @@ export default function Page() {
       setError("Failed to read on-chain data");
     }
   }
+  // The wallet provider: inside a mini app it's the host provider from the SDK,
+  // on the open web it's the injected wallet (`window.ethereum`).
+  function getEth(): any {
+    return fcProviderRef.current || (typeof window !== "undefined" ? (window as any).ethereum : null);
+  }
+
   async function ensureBaseNetwork(eth: any) {
     try {
       await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_CHAIN_ID }] });
@@ -253,13 +271,19 @@ export default function Page() {
   }
 
   async function connectWallet() {
-    const eth = (window as any).ethereum;
+    const eth = getEth();
     if (!eth) {
       setError("No wallet found — open this inside the Base App or a Farcaster wallet browser");
       return;
     }
     try {
-      const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+      let accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
+      // some hosts return nothing from eth_requestAccounts; fall back to eth_accounts
+      if (!accounts?.length) accounts = await eth.request({ method: "eth_accounts" });
+      if (!accounts?.length) {
+        setError("Wallet returned no account — approve the connection and try again");
+        return;
+      }
       await ensureBaseNetwork(eth);
       setAccount(accounts[0]);
       setInput(accounts[0]);
@@ -278,8 +302,24 @@ export default function Page() {
     setToast("Wallet disconnected");
   }
 
+  // Drop the connected address into the search and scan it. Also copies it to the
+  // clipboard so it can be pasted anywhere. Connecting alone doesn't build the
+  // report — a scan does — so this is how you re-scan your own wallet on demand.
+  async function useMyWallet() {
+    if (!account) return;
+    setInput(account);
+    try {
+      await navigator.clipboard?.writeText(account);
+      setToast("Address copied · scanning your wallet");
+    } catch {
+      setToast("Scanning your wallet");
+    }
+    setDockOpen(true);
+    runScan(account);
+  }
+
   async function mint() {
-    const eth = (window as any).ethereum;
+    const eth = getEth();
     if (!eth || !reveal) return;
     if (!account) {
       setError("Connect your wallet first to mint");
@@ -388,9 +428,23 @@ export default function Page() {
             🏆<span className="lbl"> Leaderboard</span>
           </button>
           {account ? (
-            <button className="ghost" onClick={disconnectWallet} title="Disconnect wallet">
-              🟢<span className="lbl"> {short(account)} · Disconnect</span>
-            </button>
+            <span className="wallet-connected">
+              <button
+                className="ghost wallet-addr"
+                onClick={useMyWallet}
+                title="Copy address & scan my wallet"
+              >
+                🟢<span className="lbl"> {short(account)}</span>
+              </button>
+              <button
+                className="ghost wallet-disc"
+                onClick={disconnectWallet}
+                title="Disconnect wallet"
+                aria-label="Disconnect wallet"
+              >
+                ⏻
+              </button>
+            </span>
           ) : (
             <button onClick={connectWallet}>
               👛<span className="lbl"> Connect Wallet</span>

@@ -162,6 +162,28 @@ button.small {
   padding: 0;
 }
 
+/* connected-wallet chip: tap the address to copy + scan, ⏻ to disconnect */
+.wallet-connected {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+}
+.wallet-connected .wallet-addr {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.wallet-connected .wallet-disc {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding-left: 10px;
+  padding-right: 10px;
+  color: var(--text-dim);
+}
+.wallet-connected .wallet-disc:hover {
+  color: #ff8080;
+}
+
 /* ---------- search dock ---------- */
 .search-bar {
   position: fixed;
