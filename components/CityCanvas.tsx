@@ -1030,19 +1030,39 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     let last = performance.now();
     const start = performance.now();
 
+    // The canvas backing store is fitted to the viewport here. A mini-app host
+    // (Farcaster / Base) opens as a sheet that animates up, so at mount the
+    // webview can report a zero / not-yet-settled size — and WKWebView does not
+    // reliably fire a window `resize` when the sheet finishes. So: bail on a
+    // zero size, remember the size we actually applied, and let the render loop
+    // (plus a ResizeObserver) re-fit the moment real dimensions arrive.
+    let viewW = 0;
+    let viewH = 0;
     function resize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      if (w < 2 || h < 2) return; // not laid out yet — try again next frame
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = window.innerWidth + "px";
-      canvas.style.height = window.innerHeight + "px";
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      stars.current = makeStars(160, window.innerWidth, window.innerHeight);
-      clouds.current = makeClouds(6, window.innerWidth, window.innerHeight);
-      rain.current = makeRain(220, window.innerWidth, window.innerHeight);
+      stars.current = makeStars(160, w, h);
+      clouds.current = makeClouds(6, w, h);
+      rain.current = makeRain(220, w, h);
+      viewW = w;
+      viewH = h;
     }
     resize();
     window.addEventListener("resize", resize);
+    // Catch the mini-app sheet settling to its final height even when no window
+    // resize event is dispatched.
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => resize());
+      ro.observe(document.documentElement);
+    }
 
     // ---- camera controls exposed to parent ----
     if (cameraRef) {
@@ -1151,6 +1171,11 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       last = now;
       const t = now - start;
       const W = window.innerWidth, H = window.innerHeight;
+
+      // Self-heal: if the viewport changed — or was 0 at mount and only now has
+      // a real size (mini-app sheet finished animating up) — re-fit the canvas
+      // before drawing, so it can't get stuck blank.
+      if ((W !== viewW || H !== viewH) && W > 1 && H > 1) resize();
 
       // ease camera toward targets
       cam.current.zoom += (cam.current.targetZoom - cam.current.zoom) * 0.12;
@@ -1364,6 +1389,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      ro?.disconnect();
       canvas.removeEventListener("pointerdown", onDown);
       canvas.removeEventListener("pointermove", onMove);
       canvas.removeEventListener("pointerup", onUp);
