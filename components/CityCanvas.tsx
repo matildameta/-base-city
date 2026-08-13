@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { CityBuilding, Zone } from "@/lib/classify";
-import { computeCityLayout } from "@/lib/cityLayout";
+import { computeCityLayout, type CityLayout } from "@/lib/cityLayout";
 
 /* ============================ helpers ============================ */
 
@@ -986,6 +986,25 @@ function drawSkyline(ctx: CanvasRenderingContext2D, w: number, h: number, camX: 
 
 /* ===================== camera + component ===================== */
 
+// The world always begins with the (usually empty) wasteland on the far left,
+// so opening at x=0 stares at a blank lot while every landmark — the park with
+// its trees, the river, BASE CITY HALL — and all the claimed buildings sit far
+// off to the right, unseen. Frame the camera on the real content instead: the
+// centre of mass of the buildings, or, while the city is still empty, the park,
+// so the first thing on screen is the green and the trees rather than dirt.
+function cityFocusX(layout: CityLayout): number {
+  if (layout.positioned.length) {
+    let sum = 0;
+    for (const p of layout.positioned) sum += p.x;
+    return sum / layout.positioned.length;
+  }
+  const park = layout.genesis.find((g) => g.type === "park");
+  if (park) return park.x + park.width / 2;
+  const hall = layout.genesis.find((g) => g.type === "city_hall");
+  if (hall) return hall.x + hall.width / 2;
+  return layout.worldWidth / 2;
+}
+
 export interface CameraControls {
   zoomIn: () => void;
   zoomOut: () => void;
@@ -1030,6 +1049,11 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     let last = performance.now();
     const start = performance.now();
 
+    // Auto-framing state: the city opens focused on its content and stays framed
+    // as buildings arrive over the poll, until the user pans/zooms and takes over.
+    let userMoved = false;
+    let didFirstCenter = false;
+
     // The canvas backing store is fitted to the viewport here. A mini-app host
     // (Farcaster / Base) opens as a sheet that animates up, so at mount the
     // webview can report a zero / not-yet-settled size — and WKWebView does not
@@ -1071,9 +1095,10 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
         zoomOut: () => (cam.current.targetZoom = Math.max(MIN_ZOOM, cam.current.targetZoom / 1.25)),
         reset: () => {
           cam.current.targetZoom = defaultZoom();
-          cam.current.targetX = 0;
+          userMoved = false; // resume auto-framing on the city's content
         },
         focusOn: (wx: number) => {
+          userMoved = true;
           cam.current.targetX = wx - window.innerWidth / 2 / cam.current.targetZoom;
         },
         getState: () => ({
@@ -1129,7 +1154,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     function onMove(e: PointerEvent) {
       if (!drag.current.active) return;
       const dx = e.clientX - drag.current.lastX;
-      if (Math.abs(dx) > 2) drag.current.moved = true;
+      if (Math.abs(dx) > 2) { drag.current.moved = true; userMoved = true; }
       cam.current.x -= dx / cam.current.zoom;
       cam.current.targetX = cam.current.x;
       drag.current.lastX = e.clientX;
@@ -1152,6 +1177,7 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
     }
     function onWheel(e: WheelEvent) {
       e.preventDefault();
+      userMoved = true;
       const before = screenToWorldX(e.clientX);
       const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
       cam.current.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, cam.current.zoom * factor));
@@ -1197,6 +1223,19 @@ export default function CityCanvas({ buildings, ghostBuilding, onPick, cameraRef
       const layout = computeCityLayout(buildingsRef.current);
       cam.current.worldWidth = layout.worldWidth;
       const zoom = cam.current.zoom;
+
+      // Frame the camera on the actual content (buildings, or the park while the
+      // city is empty) rather than the blank left edge. Runs every frame until
+      // the user pans/zooms, so the view re-centres gently as buildings arrive;
+      // the very first framed frame snaps so there's no long slide from x=0.
+      if (!userMoved && W > 1) {
+        const desiredX = cityFocusX(layout) - W / 2 / cam.current.zoom;
+        cam.current.targetX = desiredX;
+        if (!didFirstCenter) {
+          cam.current.x = desiredX;
+          didFirstCenter = true;
+        }
+      }
 
       // base ground across the whole frame — the zone strips only cover the
       // claimed part of the world, and with a high horizon the gaps would
