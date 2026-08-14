@@ -451,7 +451,11 @@ export default function Page() {
               </button>
             </span>
           ) : (
-            <button onClick={connectWallet}>
+            <button
+              onClick={connectWallet}
+              className={isMini ? "pulse-cta" : ""}
+              style={isMini ? { animationDelay: "0s" } : undefined}
+            >
               👛<span className="lbl"> Connect Wallet</span>
             </button>
           )}
@@ -643,7 +647,11 @@ export default function Page() {
                 {reveal.alreadyMinted ? (
                   <div className="reveal-note">✅ This address already has a permanent spot in the city.</div>
                 ) : (
-                  <button onClick={mint} disabled={minting}>
+                  <button
+                    onClick={mint}
+                    disabled={minting}
+                    className={isMini ? "pulse-cta-subtle" : ""}
+                  >
                     {minting ? "Minting on Base…" : "🧾 Mint this plot on Base"}
                   </button>
                 )}
@@ -742,9 +750,8 @@ export default function Page() {
       )}
 
       {/* ---- search dock ---- */}
-      {/* Collapsed to a single pill inside a mini app so the city stays visible;
-          tapping it slides the full dock up. Always expanded on the open web. */}
-      {!reveal && !selected && !scanning && (
+      {/* In mini app: only show when wallet is connected. On open web: always show. */}
+      {!reveal && !selected && !scanning && (!isMini || account) && (
         <AnimatePresence initial={false} mode="wait">
           {isMini && !dockOpen ? (
             <motion.button
@@ -756,7 +763,7 @@ export default function Page() {
               exit={{ opacity: 0, y: 20 }}
               transition={{ duration: 0.18 }}
             >
-              🔍 Scan a wallet
+              🔍 Scan my wallet
             </motion.button>
           ) : (
             <motion.div
@@ -775,10 +782,11 @@ export default function Page() {
               <div className="search-row">
                 <input
                   type="text"
-                  placeholder="Enter a Base wallet address (0x...)"
+                  placeholder={isMini ? "Your wallet address (auto-filled)" : "Enter a Base wallet address (0x...)"}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && runScan(input.trim())}
+                  disabled={isMini}
                 />
                 <button onClick={() => runScan(input.trim())}>Scan 🔍</button>
               </div>
